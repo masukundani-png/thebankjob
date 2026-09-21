@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>The Bank Job</title>
+<meta name="theme-color" content="#07090f">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Bank Job">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  *{-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;user-select:none;-webkit-user-select:none}
+  html,body{margin:0;height:100%;overflow:hidden;overscroll-behavior:none;touch-action:none;background:#07090f;font-family:monospace}
+  body{display:flex;flex-direction:column;align-items:center;justify-content:center;
+       padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);box-sizing:border-box}
+  canvas{width:min(100vw, calc((100dvh - 150px) * 640 / 720));aspect-ratio:640/720;height:auto;image-rendering:pixelated;background:#0b1020;display:block}
+  #pad{width:100%;max-width:640px;height:140px;box-sizing:border-box;padding:0 14px;display:flex;justify-content:space-between;align-items:center;touch-action:none}
+  #pad .grp{display:flex;gap:10px;align-items:center}
+  #pad .col{display:flex;flex-direction:column;gap:10px}
+  #pad button{width:64px;height:64px;border-radius:16px;border:2px solid #34d399;background:#0b1020cc;color:#7dffb0;font:bold 22px monospace;touch-action:none;padding:0}
+  #pad button:active,#pad button.on{background:#34d39944}
+  #pad .col button{height:64px}
+  #pad .j{width:104px;height:104px;border-radius:50%;border-color:#f7931a;color:#f7931a;font-size:18px}
+  /* phone in landscape: controls float over the sides, game uses full height */
+  @media (orientation:landscape) and (max-height:520px){
+    canvas{width:min(100vw, calc(100dvh * 640 / 720))}
+    #pad{position:fixed;inset:0;max-width:none;height:auto;padding:0 max(18px,env(safe-area-inset-left)) 14px;align-items:flex-end;pointer-events:none}
+    #pad button{pointer-events:auto;background:#0b1020aa;width:58px;height:58px}
+    #pad .col button{height:58px}
+    #pad .j{width:92px;height:92px}
+  }
+</style>
+</head>
+<body>
+<canvas id="c" width="640" height="720"></canvas>
+<div id="pad">
+  <div class="grp"><button data-k="L">&#9664;</button><button data-k="R">&#9654;</button></div>
+  <div class="col"><button data-k="U">&#9650;</button><button data-k="D">&#9660;</button></div>
+  <button class="j" data-k="J">JUMP</button>
+</div>
+<script>
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const W = 640, H = 720;
+
+// ---------- audio ----------
+let ac = null;
+function beep(f, d = .08, type = 'square', vol = .05, slide = 0) {
+  try {
+    ac = ac || new (window.AudioContext || window.webkitAudioContext)();
+    if (ac.state === 'suspended') ac.resume();
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = type; o.frequency.value = f;
+    if (slide) o.frequency.linearRampToValueAtTime(f + slide, ac.currentTime + d);
+    g.gain.value = vol; g.gain.linearRampToValueAtTime(0, ac.currentTime + d);
+    o.connect(g); g.connect(ac.destination); o.start(); o.stop(ac.currentTime + d);
+  } catch (e) {}
+}
+
+// ---------- level geometry ----------
+// each platform is a sloped girder; barrels roll downhill (yr > yl = roll right)
+const plats = [
+  { x1: 0,  x2: 640, yl: 690, yr: 680 },   // ground, rolls left
+  { x1: 0,  x2: 580, yl: 580, yr: 600 },   // rolls right
+  { x1: 60, x2: 640, yl: 500, yr: 480 },   // rolls left
+  { x1: 0,  x2: 580, yl: 370, yr: 390 },   // rolls right
+  { x1: 60, x2: 640, yl: 290, yr: 270 },   // rolls left
+  { x1: 0,  x2: 400, yl: 150, yr: 160 },   // top: government lives here
+];
+const surf = (p, x) => p.yl + (p.yr - p.yl) * (x - p.x1) / (p.x2 - p.x1);
+const inP = (p, x) => x >= p.x1 && x <= p.x2;
+
+const ladderDefs = [[0, 1, 120], [1, 2, 520], [2, 3, 140], [3, 4, 500], [4, 5, 300]];
+const ladders = ladderDefs.map(([lo, hi, x]) => ({ x, top: surf(plats[hi], x), bot: surf(plats[lo], x) }));
+
+const coinSpots = [
+  [0, 220], [0, 340], [0, 460], [1, 90], [1, 300], [1, 440], [2, 200], [2, 340], [2, 470],
+  [3, 110], [3, 250], [3, 400], [4, 200], [4, 400], [4, 560], [5, 200],
+];
+const EXIT = { x: 340, w: 60 };
+const GOV = { x: 12, w: 96 };
+const LEVELS = [
+  { name: 'LOCAL REGULATOR', tip: 'Rules roll downhill. Jump them!', pc: ['#1f8f6b', '#34d399', '#0d5a44'], bg: ['#0d1430', '#070a14'] },
+  { name: 'CENTRAL BANK', tip: 'NEW: Inflation fireballs bounce!', fire: true, pc: ['#a8801a', '#f2c94c', '#6b4f0d'], bg: ['#241a0a', '#0f0a04'] },
+  { name: 'TAX AGENCY', tip: 'NEW: IRS audit drones fly in. Watch the !', fire: true, drones: true, pc: ['#7a4fc4', '#b794f6', '#43267a'], bg: ['#1a1030', '#0a0714'] },
+  { name: 'EXCHANGE BAN', tip: 'NEW: Frozen accounts - the floor is slippery!', fire: true, drones: true, ice: true, pc: ['#3b82c4', '#8fd0ff', '#1e4a7a'], bg: ['#0a1c30', '#050b14'] },
+  { name: 'GLOBAL SUMMIT', tip: 'BOSS: Rule trains! Grab all 3 KEYS to unseal FREEDOM.', fire: true, drones: true, ice: true, boss: true, lock: true, pc: ['#a83a3a', '#ff7b7b', '#5c1a1a'], bg: ['#2a0a12', '#10040a'] },
+];
+let cfg = LEVELS[0];
+const N1 = ['SEC', 'IMF', 'FED', 'ECB', 'OFAC', 'FATF', 'BIS', 'CFTC', 'MICA', 'FinCEN'];
+const N2 = ['CRACKDOWN', 'AUDIT', 'MORATORIUM', 'SANCTIONS', 'LOCKDOWN', 'INJUNCTION', 'BAILOUT', 'SUMMIT'];
+function getCfg(n) {
+  if (n <= LEVELS.length) return LEVELS[n - 1];
+  let sd = n * 9301 + 49297; const r = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
+  const hue = (n * 47) % 360, boss = n % 5 === 0, ice = boss || r() < .6;
+  const zones = [1, 2, 3, 4].filter(() => r() < .7).map(p => { const a = 100 + r() * 260; return { p, x1: a, x2: a + 140 + r() * 100 }; });
+  return {
+    name: N1[r() * N1.length | 0] + ' ' + N2[r() * N2.length | 0], fire: true, drones: true, ice, zones, boss, lock: boss,
+    tip: boss ? 'BOSS: rule trains! Grab all 3 KEYS to unseal FREEDOM.' : 'Everything at once. It only gets faster!',
+    pc: [`hsl(${hue},45%,32%)`, `hsl(${hue},70%,65%)`, `hsl(${hue},45%,18%)`], bg: [`hsl(${hue},45%,10%)`, `hsl(${hue},45%,4%)`],
+  };
+}
+const RULES = ['TAX', 'BAN', 'KYC', 'REG', 'AML', 'SEC', 'FEE', 'LAW'];
+
+// ---------- state ----------
+let state = 'title', level = 1, lives = 3, score = 0, hi = +(localStorage.getItem('cbc_hi') || 0);
+let maxLvl = +(localStorage.getItem('cbc_max') || 1), banner = 0, drones = [], ice = [], dSpawn = 0;
+let P, barrels, coins, key, particles, floaters, tick = 0, spawnT = 0, stateT = 0, govThrow = 0;
+
+const keys = {};
+const norm = e => e.code === 'Space' ? ' ' : e.key;
+function press(k) { if (!keys[k]) onPress(k); keys[k] = true; }
+function release(k) { keys[k] = false; }
+window.addEventListener('keydown', e => {
+  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
+  press(norm(e));
+});
+window.addEventListener('keyup', e => release(norm(e)));
+window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
+document.addEventListener('visibilitychange', () => { for (const k in keys) keys[k] = false; });
+window.focus();
+// on-screen / touch / mouse controls
+const btns = { L: 'ArrowLeft', R: 'ArrowRight', U: 'ArrowUp', D: 'ArrowDown', J: ' ' };
+document.querySelectorAll('#pad button').forEach(b => {
+  const k = btns[b.dataset.k];
+  const dn = e => { e.preventDefault(); window.focus(); press(k); };
+  const up = e => { e.preventDefault(); release(k); };
+  b.addEventListener('pointerdown', dn); b.addEventListener('pointerup', up);
+  b.addEventListener('pointerleave', up); b.addEventListener('pointercancel', up);
+});
+addEventListener('contextmenu', e => e.preventDefault());
+cv.addEventListener('pointerdown', () => { window.focus(); if (state === 'title' || state === 'over') onPress('Enter'); });
+const L = () => keys.ArrowLeft || keys.a || keys.A;
+const R = () => keys.ArrowRight || keys.d || keys.D;
+const U = () => keys.ArrowUp || keys.w || keys.W;
+const D = () => keys.ArrowDown || keys.s || keys.S;
+
+function onPress(k) {
+  if (state === 'title' || state === 'over') {
+    if ((k === 'c' || k === 'C') && state === 'title' && maxLvl > 1) { level = maxLvl; lives = 3; score = 0; startLevel(); return; }
+    if (/^[1-9]$/.test(k) && +k <= maxLvl && state === 'title') { level = +k; lives = 3; score = 0; startLevel(); return; }
+    if (k === 'Enter' || k === ' ') { level = 1; lives = 3; score = 0; startLevel(); }
+    return;
+  }
+  if (state === 'play' && (k === ' ' || k === 'z' || k === 'Z') && P.ground && !P.climb) {
+    P.vy = -9.2; P.ground = false; buzz(12); beep(330, .15, 'square', .05, 300);
+  }
+}
+
+function startLevel() {
+  coins = coinSpots.map(([pi, x]) => ({ x, y: surf(plats[pi], x) - 26, got: false, ph: Math.random() * 6 }));
+  cfg = getCfg(level);
+  const ks = cfg.lock ? [[596, 2], [60, 3], [560, 4]] : [[596, 2]];
+  key = ks.map(([x, pi]) => ({ x, y: surf(plats[pi], x) - 24, got: false }));
+  ice = cfg.ice ? (cfg.zones || [{ p: 1, x1: 200, x2: 380 }, { p: 3, x1: 240, x2: 420 }, { p: 4, x1: 300, x2: 500 }]) : [];
+  drones = []; dSpawn = 200; banner = 170;
+  if (level > maxLvl) { maxLvl = level; try { localStorage.setItem('cbc_max', maxLvl); } catch (e) {} }
+  barrels = []; particles = []; floaters = [];
+  spawnT = 60; resetPlayer(); state = 'play';
+}
+function resetPlayer() {
+  P = { x: 40, y: surf(plats[0], 40), vx: 0, vy: 0, ground: true, climb: null, face: 1, anim: 0, inv: 0 };
+  barrels = barrels.filter(b => b.y < 100); // clear near-player mess but keep it fair
+  barrels = [];
+}
+
+function addFloat(x, y, t, c = '#ffd34d') { floaters.push({ x, y, t, c, life: 45 }); }
+function burst(x, y, c, n = 10) {
+  for (let i = 0; i < n; i++) particles.push({ x, y, vx: (Math.random() - .5) * 6, vy: -Math.random() * 5, life: 30 + Math.random() * 15, c });
+}
+
+// ---------- update ----------
+function spawnBarrel(fire, off = 0) {
+  const p = plats[5], x = GOV.x + GOV.w + 10 - off;
+  barrels.push({ x, y: surf(p, x), vy: fire ? -4 : 0, dir: 1, fall: !!fire, fire: !!fire, p: 5,
+                 label: fire ? 'INFL' : RULES[Math.random() * RULES.length | 0], rot: 0, scored: false });
+  govThrow = 18; beep(120, .12, 'sawtooth', .04);
+}
+
+const onIce = (x, y) => ice.some(z => x >= z.x1 && x <= z.x2 && Math.abs(y - surf(plats[z.p], x)) < 10);
+function landing(x, py, y) {
+  for (let i = plats.length - 1; i >= 0; i--) {
+    const p = plats[i];
+    if (!inP(p, x)) continue;
+    const s = surf(p, x);
+    if (py <= s + 3 && y >= s) return { y: s, i };
+  }
+  return null;
+}
+
+function update() {
+  tick++;
+  if (govThrow > 0) govThrow--;
+  if (state === 'dying') { stateT--; updateFx(); if (stateT <= 0) { lives--; if (lives <= 0) endGame(); else resetPlayer(), state = 'play'; } return; }
+  if (state === 'clear') { stateT--; updateFx(); if (stateT <= 0) { level++; startLevel(); } return; }
+  if (state !== 'play') return;
+
+  // player
+  const speed = 2.8;
+  if (P.inv > 0) P.inv--;
+  if (P.climb) {
+    const l = P.climb;
+    if (U()) P.y -= 2.4; else if (D()) P.y += 2.4;
+    if (U() || D()) P.anim += .3;
+    if (P.y <= l.top) { P.y = l.top; P.climb = null; P.ground = true; }
+    else if (P.y >= l.bot) { P.y = l.bot; P.climb = null; P.ground = true; }
+  } else {
+    const tv = (R() ? speed : 0) - (L() ? speed : 0);
+    P.vx = P.ground && onIce(P.x, P.y) ? P.vx + (tv - P.vx) * .04 : tv;
+    if (Math.abs(P.vx) > .3) { P.face = Math.sign(P.vx); P.anim += .28; }
+    P.x = Math.max(12, Math.min(W - 12, P.x + P.vx));
+
+    // grab ladder
+    for (const l of ladders) {
+      if (Math.abs(P.x - l.x) > 12) continue;
+      if ((U() && P.y <= l.bot + 2 && P.y > l.top + 2) || (D() && P.y >= l.top - 2 && P.y < l.bot - 2)) {
+        P.climb = l; P.x = l.x; P.vy = 0; P.ground = false; break;
+      }
+    }
+    if (!P.climb) {
+      if (P.ground) {
+        const p = plats.find(p => inP(p, P.x) && Math.abs(P.y - surf(p, P.x)) <= 8);
+        if (p) P.y = surf(p, P.x); else P.ground = false;
+      } else {
+        const py = P.y; P.vy += .5; P.y += P.vy;
+        if (P.vy >= 0) { const h = landing(P.x, py, P.y); if (h) { P.y = h.y; P.vy = 0; P.ground = true; } }
+        if (P.y > 720) { P.y = surf(plats[0], P.x); P.vy = 0; P.ground = true; }
+      }
+    }
+  }
+
+  // exit
+  if (P.y < 200 && P.x > EXIT.x && P.x < EXIT.x + EXIT.w && (!cfg.lock || key.every(k => k.got))) {
+    const bonus = 500 + coins.filter(c => c.got).length * 20;
+    score += bonus; addFloat(P.x, P.y - 60, 'FREEDOM +' + bonus, '#7dffb0');
+    beep(660, .12); setTimeout(() => beep(880, .2), 120); setTimeout(() => beep(1180, .3), 260);
+    state = 'clear'; stateT = 110; barrels.forEach(b => burst(b.x, b.y - 10, '#8aa0b8', 6)); barrels = []; drones = [];
+    return;
+  }
+
+  // coins & key
+  for (const c of coins) if (!c.got && Math.abs(c.x - P.x) < 16 && Math.abs(c.y - (P.y - 18)) < 24) {
+    c.got = true; score += 100; addFloat(c.x, c.y - 10, '+100'); burst(c.x, c.y, '#ffc107', 8); beep(988, .06, 'square', .05); setTimeout(() => beep(1318, .1), 55);
+  }
+  for (const k of key) if (!k.got && Math.abs(k.x - P.x) < 18 && Math.abs(k.y - (P.y - 18)) < 26) {
+    k.got = true; P.inv = 60 * (cfg.lock ? 5 : 7);
+    addFloat(P.x, P.y - 50, cfg.lock ? 'KEY ' + key.filter(q => q.got).length + '/' + key.length : 'SELF-CUSTODY!', '#7dd3ff'); beep(520, .3, 'triangle', .07, 500);
+  }
+
+  // barrels
+  if (--spawnT <= 0) {
+    const fire = cfg.fire && Math.random() < .4, n = cfg.boss && !fire && Math.random() < .45 ? 3 : 1;
+    for (let i = 0; i < n; i++) spawnBarrel(fire, i * 30);
+    spawnT = Math.max(48, 150 - level * 10) * (n > 1 ? 1.5 : 1) + Math.random() * 40;
+  }
+  if (cfg.drones && --dSpawn <= 0) {
+    const pi = 1 + (Math.random() * 4 | 0), left = Math.random() < .5;
+    drones.push({ pi, x: left ? -20 : 660, dir: left ? 1 : -1, warn: 55, y: 0 });
+    dSpawn = Math.max(100, 320 - level * 12) + Math.random() * 90;
+  }
+  if (banner > 0) banner--;
+  const bs = Math.min(3.6, 1.5 + level * .15);
+  for (const b of barrels) {
+    b.rot += b.dir * .12;
+    if (!b.fall) {
+      const p = plats[b.p];
+      b.x += b.dir * bs;
+      if (!inP(p, b.x)) { b.fall = true; b.vy = 0; } else b.y = surf(p, b.x);
+    } else {
+      const py = b.y; b.vy += .45; b.y += b.vy; b.x += b.dir * (b.fire ? bs * 1.1 : .8);
+      const h = landing(b.x, py, b.y);
+      if (h) {
+        b.p = h.i; b.y = h.y; b.dir = plats[h.i].yr > plats[h.i].yl ? 1 : -1; if (h.i === 0) b.dir = -1;
+        if (b.fire) b.vy = -6.5; else b.fall = false;
+      }
+    }
+    // hop bonus
+    if (!b.scored && !P.ground && !P.climb && Math.abs(b.x - P.x) < 14 && b.y - P.y > 0 && b.y - P.y < 60) {
+      b.scored = true; score += 50; addFloat(P.x, P.y - 40, '+50 JUMP', '#9be7ff'); beep(760, .05, 'triangle', .05);
+    }
+    // collision
+    if (Math.abs(b.x - P.x) < 18 && Math.abs((b.y - 12) - (P.y - 22)) < 24) {
+      if (P.inv > 0) { b.dead = true; score += 200; addFloat(b.x, b.y - 20, 'DECENTRALIZED +200', '#7dd3ff'); burst(b.x, b.y - 12, '#7dd3ff', 14); beep(200, .15, 'sawtooth', .06, -100); }
+      else { die(); return; }
+    }
+    if (b.x < -30 || b.y > 760) b.dead = true;
+  }
+  barrels = barrels.filter(b => !b.dead);
+  for (const d of drones) {
+    if (d.warn > 0) { d.warn--; continue; }
+    d.x += d.dir * Math.min(4.2, 2.2 + level * .08);
+    const p = plats[d.pi];
+    d.y = surf(p, Math.max(p.x1, Math.min(p.x2, d.x))) - 30 + Math.sin(tick * .15) * 4;
+    if (Math.abs(d.x - P.x) < 18 && Math.abs(d.y - (P.y - 24)) < 20) {
+      if (P.inv > 0) { d.dead = true; score += 200; addFloat(d.x, d.y - 10, 'DEFUNDED +200', '#7dd3ff'); burst(d.x, d.y, '#7dd3ff', 14); beep(200, .15, 'sawtooth', .06, -100); }
+      else { die(); return; }
+    }
+    if (d.x < -40 || d.x > 680) d.dead = true;
+  }
+  drones = drones.filter(d => !d.dead);
+  updateFx();
+}
+
+function updateFx() {
+  for (const p of particles) { p.x += p.vx; p.y += p.vy; p.vy += .3; p.life--; }
+  particles = particles.filter(p => p.life > 0);
+  for (const f of floaters) { f.y -= .6; f.life--; }
+  floaters = floaters.filter(f => f.life > 0);
+}
+
+const buzz = ms => { try { navigator.vibrate && navigator.vibrate(ms); } catch (e) {} };
+function die() {
+  buzz([60, 40, 120]);
+  state = 'dying'; stateT = 90; burst(P.x, P.y - 20, '#9fb4c7', 22); burst(P.x, P.y - 20, '#ff9800', 10);
+  beep(400, .5, 'sawtooth', .07, -350);
+}
+function endGame() {
+  state = 'over'; if (score > hi) { hi = score; try { localStorage.setItem('cbc_hi', hi); } catch (e) {} }
+}
+
+// ---------- drawing ----------
+function txt(s, x, y, size = 12, color = '#fff', align = 'center') {
+  ctx.font = `bold ${size}px monospace`; ctx.textAlign = align; ctx.fillStyle = color; ctx.fillText(s, x, y);
+}
+
+function drawBg() {
+  const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, cfg.bg[0]); g.addColorStop(1, cfg.bg[1]);
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = 'rgba(80,140,255,.06)'; ctx.lineWidth = 1;
+  for (let x = 0; x < W; x += 32) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+  for (let y = 0; y < H; y += 32) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+  ctx.fillStyle = 'rgba(0,255,160,.07)'; ctx.font = '10px monospace'; ctx.textAlign = 'left';
+  for (let i = 0; i < 40; i++) ctx.fillText(((i * 7919) % 2) ? '1' : '0', (i * 97) % W, ((i * 53 + tick * .3) % H));
+}
+
+function drawPlat(p) {
+  const n = Math.ceil((p.x2 - p.x1) / 16);
+  for (let i = 0; i < n; i++) {
+    const x = p.x1 + i * 16, y = surf(p, x);
+    ctx.fillStyle = cfg.pc[0]; ctx.fillRect(x, y, 16, 10);
+    ctx.fillStyle = cfg.pc[1]; ctx.fillRect(x, y, 16, 3);
+    ctx.fillStyle = cfg.pc[2]; ctx.fillRect(x + 15, y, 1, 10); ctx.fillRect(x, y + 9, 16, 1);
+  }
+}
+
+function drawLadder(l) {
+  ctx.strokeStyle = '#5ac8fa'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(l.x - 9, l.top); ctx.lineTo(l.x - 9, l.bot); ctx.moveTo(l.x + 9, l.top); ctx.lineTo(l.x + 9, l.bot); ctx.stroke();
+  ctx.lineWidth = 2;
+  for (let y = l.top + 6; y < l.bot; y += 12) { ctx.beginPath(); ctx.moveTo(l.x - 9, y); ctx.lineTo(l.x + 9, y); ctx.stroke(); }
+}
+
+function drawGov() {
+  const b = surf(plats[5], GOV.x + 40), x = GOV.x, w = GOV.w, h = 84, shake = govThrow > 0 ? Math.sin(tick * 2) * 2 : 0;
+  ctx.save(); ctx.translate(shake, 0);
+  ctx.fillStyle = '#cfd6e2'; ctx.fillRect(x, b - 12, w, 12);                          // steps
+  ctx.fillStyle = '#e6ebf3'; ctx.fillRect(x + 6, b - 24, w - 12, 12);
+  for (let i = 0; i < 5; i++) { ctx.fillStyle = '#f5f7fb'; ctx.fillRect(x + 12 + i * 17, b - h + 18, 10, h - 42); }
+  ctx.fillStyle = '#dfe5ef'; ctx.fillRect(x + 6, b - h + 8, w - 12, 10);
+  ctx.beginPath(); ctx.moveTo(x, b - h + 8); ctx.lineTo(x + w / 2, b - h - 24); ctx.lineTo(x + w, b - h + 8); ctx.closePath(); ctx.fillStyle = '#c1c9d8'; ctx.fill();
+  // angry face in pediment
+  ctx.fillStyle = '#c0392b';
+  ctx.fillRect(x + w / 2 - 20, b - h - 4, 14, 5); ctx.fillRect(x + w / 2 + 6, b - h - 4, 14, 5);
+  ctx.fillStyle = '#111'; ctx.fillRect(x + w / 2 - 14, b - h, 6, 6); ctx.fillRect(x + w / 2 + 8, b - h, 6, 6);
+  ctx.fillRect(x + w / 2 - 10, b - h + 12, 20, 3);
+  ctx.strokeStyle = '#888'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x + w / 2, b - h - 24); ctx.lineTo(x + w / 2, b - h - 42); ctx.stroke();
+  ctx.fillStyle = '#e74c3c'; ctx.fillRect(x + w / 2, b - h - 42, 16, 10);
+  ctx.restore();
+  txt('GOVERNMENT', x + w / 2, b + 16, 10, '#ff8a80');
+}
+
+function drawExit() {
+  const y = surf(plats[5], EXIT.x + 30), cx = EXIT.x + EXIT.w / 2, r = 24 + Math.sin(tick * .1) * 2;
+  const g = ctx.createRadialGradient(cx, y - 34, 4, cx, y - 34, r + 14);
+  g.addColorStop(0, '#fff8'); g.addColorStop(.5, '#7dffb055'); g.addColorStop(1, '#0000');
+  ctx.fillStyle = g; ctx.fillRect(cx - 50, y - 90, 100, 100);
+  ctx.strokeStyle = '#7dffb0'; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(cx, y - 30, 18, 28, 0, 0, 7); ctx.stroke();
+  const sealed = cfg.lock && !key.every(k => k.got);
+  if (sealed) { ctx.strokeStyle = '#ff5252'; ctx.beginPath(); ctx.moveTo(cx - 20, y - 56); ctx.lineTo(cx + 20, y - 4); ctx.moveTo(cx + 20, y - 56); ctx.lineTo(cx - 20, y - 4); ctx.stroke(); }
+  txt(sealed ? 'SEALED ' + key.filter(k => k.got).length + '/' + key.length : 'FREEDOM', cx, y - 68, 10, sealed ? '#ff8a80' : '#7dffb0'); txt('(DeFi)', cx, y + 22, 9, '#7dffb0');
+}
+
+function drawCoin(c) {
+  const s = Math.abs(Math.cos(tick * .07 + c.ph)), by = Math.sin(tick * .08 + c.ph) * 2;
+  ctx.save(); ctx.translate(c.x, c.y + by); ctx.scale(Math.max(.15, s), 1);
+  ctx.fillStyle = '#f7931a'; ctx.beginPath(); ctx.arc(0, 0, 10, 0, 7); ctx.fill();
+  ctx.strokeStyle = '#ffd27a'; ctx.lineWidth = 2; ctx.stroke();
+  ctx.restore();
+  if (s > .5) txt('B', c.x, c.y + by + 4, 11, '#fff');
+}
+
+function drawKey() {
+  for (const k of key) {
+    if (k.got) continue;
+    const y = k.y + Math.sin(tick * .1) * 3;
+    ctx.fillStyle = '#7dd3ff'; ctx.beginPath(); ctx.arc(k.x, y - 4, 7, 0, 7); ctx.fill();
+    ctx.fillStyle = '#0b1020'; ctx.beginPath(); ctx.arc(k.x, y - 4, 3, 0, 7); ctx.fill();
+    ctx.fillStyle = '#7dd3ff'; ctx.fillRect(k.x - 2, y, 4, 12); ctx.fillRect(k.x, y + 7, 6, 3);
+    txt('KEYS', k.x, y - 16, 8, '#7dd3ff');
+  }
+}
+
+function drawIce() {
+  for (const z of ice) {
+    for (let x = z.x1; x < z.x2; x += 8) { ctx.fillStyle = 'rgba(170,230,255,.75)'; ctx.fillRect(x, surf(plats[z.p], x) - 2, 8, 4); }
+    txt('FROZEN', (z.x1 + z.x2) / 2, surf(plats[z.p], (z.x1 + z.x2) / 2) + 22, 8, '#aee6ff');
+  }
+}
+
+function drawDrone(d) {
+  if (d.warn > 0) {
+    const p = plats[d.pi], x = d.dir > 0 ? 18 : W - 18, y = surf(p, Math.max(p.x1, Math.min(p.x2, x))) - 30;
+    if ((tick >> 2) & 1) { ctx.fillStyle = '#ff5252'; ctx.beginPath(); ctx.moveTo(x, y - 14); ctx.lineTo(x + 13, y + 10); ctx.lineTo(x - 13, y + 10); ctx.fill(); txt('!', x, y + 8, 14, '#fff'); }
+    return;
+  }
+  ctx.fillStyle = '#e0e6f0'; ctx.beginPath(); ctx.ellipse(d.x, d.y, 15, 9, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = '#c0392b'; ctx.beginPath(); ctx.arc(d.x + d.dir * 6, d.y, 3.5, 0, 7); ctx.fill();
+  ctx.strokeStyle = '#8fa3bd'; ctx.lineWidth = 2; const r = 14 * Math.cos(tick * 1.2);
+  ctx.beginPath(); ctx.moveTo(d.x - r, d.y - 12); ctx.lineTo(d.x + r, d.y - 12); ctx.stroke();
+  txt('IRS', d.x, d.y + 22, 8, '#ff8a80');
+}
+
+function drawBarrel(b) {
+  if (b.fire) {
+    ctx.fillStyle = (tick >> 2) & 1 ? '#ff9800' : '#ff5722'; ctx.beginPath(); ctx.arc(b.x, b.y - 13, 13, 0, 7); ctx.fill();
+    ctx.fillStyle = '#ffe082'; ctx.beginPath(); ctx.arc(b.x, b.y - 13, 7, 0, 7); ctx.fill();
+    ctx.fillStyle = '#ff9800'; ctx.beginPath(); ctx.moveTo(b.x - 8, b.y - 22); ctx.lineTo(b.x - 4 * b.dir, b.y - 34); ctx.lineTo(b.x + 6, b.y - 22); ctx.fill();
+    txt(b.label, b.x, b.y - 10, 8, '#7a1f00'); return;
+  }
+  ctx.fillStyle = '#5b6b82'; ctx.beginPath(); ctx.arc(b.x, b.y - 13, 13, 0, 7); ctx.fill();
+  ctx.strokeStyle = '#2b3547'; ctx.lineWidth = 3; ctx.stroke();
+  ctx.strokeStyle = '#8fa3bd'; ctx.lineWidth = 2; ctx.beginPath();
+  ctx.moveTo(b.x + Math.cos(b.rot) * 10, b.y - 13 + Math.sin(b.rot) * 10); ctx.lineTo(b.x - Math.cos(b.rot) * 10, b.y - 13 - Math.sin(b.rot) * 10); ctx.stroke();
+  ctx.fillStyle = '#2b3547'; ctx.fillRect(b.x - 12, b.y - 17, 24, 10);
+  txt(b.label, b.x, b.y - 9, 9, '#ff8a80');
+}
+
+function drawRobot() {
+  if (state === 'dying') return;
+  if (P.inv > 0 && P.inv < 120 && (tick >> 2) & 1) return;
+  const x = P.x, y = P.y, f = P.face, sw = Math.sin(P.anim) * 4, moving = P.vx || P.climb;
+  ctx.save();
+  if (P.inv > 0) { ctx.shadowColor = '#7dd3ff'; ctx.shadowBlur = 16; }
+  if (P.climb) {
+    ctx.fillStyle = '#6f8199'; ctx.fillRect(x - 6, y - 12 + sw * .6, 5, 12); ctx.fillRect(x + 1, y - 12 - sw * .6, 5, 12);
+  } else {
+    const a = P.ground ? (moving ? sw : 0) : 3;
+    ctx.fillStyle = '#6f8199'; ctx.fillRect(x - 7, y - 12, 6, 12 - Math.max(0, -a) * .5); ctx.fillRect(x + 1, y - 12, 6, 12 - Math.max(0, a) * .5);
+    ctx.fillStyle = '#3a4658'; ctx.fillRect(x - 8, y - 3, 8, 3); ctx.fillRect(x, y - 3, 8, 3);
+  }
+  ctx.fillStyle = '#a9bdd2'; ctx.fillRect(x - 10, y - 32, 20, 21);                       // body
+  ctx.fillStyle = '#f7931a'; ctx.beginPath(); ctx.arc(x, y - 22, 5, 0, 7); ctx.fill();   // chest coin
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 8px monospace'; ctx.textAlign = 'center'; ctx.fillText('B', x, y - 19);
+  ctx.fillStyle = '#6f8199'; const arm = P.ground && !P.climb ? -sw * .5 : (P.climb ? sw : -6);
+  ctx.fillRect(x - 14, y - 30 + arm, 4, 14); ctx.fillRect(x + 10, y - 30 - arm, 4, 14);   // arms
+  ctx.fillStyle = '#c5d3e2'; ctx.fillRect(x - 9, y - 46, 18, 14);                          // head
+  ctx.fillStyle = '#0b1020'; ctx.fillRect(x - 7 + (f > 0 ? 2 : 0), y - 43, 12, 7);          // visor
+  ctx.fillStyle = '#39f5ff'; ctx.fillRect(x - 5 + (f > 0 ? 3 : 0), y - 41, 3, 3); ctx.fillRect(x + 1 + (f > 0 ? 3 : 0), y - 41, 3, 3);
+  ctx.strokeStyle = '#6f8199'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x, y - 46); ctx.lineTo(x, y - 53); ctx.stroke();
+  ctx.fillStyle = '#ff5252'; ctx.beginPath(); ctx.arc(x, y - 54, 3, 0, 7); ctx.fill();
+  ctx.restore();
+}
+
+function drawHUD() {
+  txt('SCORE ' + String(score).padStart(6, '0'), 12, 22, 14, '#fff', 'left');
+  txt('HI ' + String(hi).padStart(6, '0'), W / 2, 22, 14, '#ffd34d');
+  txt('LVL ' + level + ' ' + cfg.name, W - 12, 22, 12, '#7dffb0', 'right');
+  txt('LIVES ' + '●'.repeat(Math.max(0, lives)), 12, 42, 12, '#ff8a80', 'left');
+  const got = coins ? coins.filter(c => c.got).length : 0;
+  txt('BTC ' + got + '/' + (coins ? coins.length : 0), W - 12, 42, 12, '#f7931a', 'right');
+  if (P && P.inv > 0) {
+    ctx.fillStyle = '#7dd3ff'; ctx.fillRect(W / 2 - 50, 32, 100 * Math.min(1, P.inv / 420), 5);
+    txt('SELF-CUSTODY', W / 2, 52, 9, '#7dd3ff');
+  }
+}
+
+function overlay(title, lines, color = '#7dffb0') {
+  ctx.fillStyle = 'rgba(5,8,18,.82)'; ctx.fillRect(0, 0, W, H);
+  txt(title, W / 2, 250, 38, color);
+  lines.forEach((l, i) => txt(l, W / 2, 310 + i * 26, 15, i === lines.length - 1 && (tick >> 5) & 1 ? '#fff' : '#b9c4d6'));
+}
+
+function draw() {
+  drawBg();
+  ladders.forEach(drawLadder);
+  plats.forEach(drawPlat); drawIce();
+  drawGov(); drawExit();
+  if (coins) coins.forEach(c => !c.got && drawCoin(c));
+  if (key) drawKey();
+  if (barrels) barrels.forEach(drawBarrel);
+  drones.forEach(drawDrone);
+  if (P && state !== 'title') drawRobot();
+  for (const p of particles || []) { ctx.fillStyle = p.c; ctx.fillRect(p.x, p.y, 4, 4); }
+  for (const f of floaters || []) { ctx.globalAlpha = Math.min(1, f.life / 20); txt(f.t, f.x, f.y, 12, f.c); ctx.globalAlpha = 1; }
+  drawHUD();
+  if (state === 'title') overlay('THE BANK JOB', [
+    'Escape the GOVERNMENT. Reach FREEDOM.', 'Collect BTC. Jump over the rules (TAX, BAN, KYC...).', '',
+    'Arrows / WASD: move & climb ladders', 'SPACE / Z: jump', 'Grab the KEYS for self-custody: smash rules!', '', 'Press ENTER to start' + (maxLvl > 1 ? '  (1-' + Math.min(9, maxLvl) + ' pick level, C = continue at ' + maxLvl + ')' : '')]);
+  if (state === 'over') overlay('REGULATED OUT', ['Final score: ' + score, 'High score: ' + hi, '', 'Press ENTER to try again'], '#ff8a80');
+  if (banner > 0 && state === 'play') {
+    ctx.globalAlpha = Math.min(1, banner / 30); ctx.fillStyle = 'rgba(5,8,18,.75)'; ctx.fillRect(0, 300, W, 90);
+    txt('LEVEL ' + level + ': ' + cfg.name, W / 2, 335, 24, cfg.pc[1]); txt(cfg.tip, W / 2, 365, 13, '#e6ebf3'); ctx.globalAlpha = 1;
+  }
+  if (state === 'clear') txt('LEVEL ' + level + ' CLEARED', W / 2, 360, 26, '#7dffb0');
+}
+
+// ---------- loop (fixed 60fps step) ----------
+let last = performance.now(), acc = 0;
+function frame(t) {
+  acc += Math.min(100, t - last); last = t;
+  while (acc >= 1000 / 60) { update(); acc -= 1000 / 60; }
+  draw(); requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
+</script>
+</body>
+</html>
