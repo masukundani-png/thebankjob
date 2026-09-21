@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<title>The Bank Job</title>
+<title>Bank Job</title>
 <meta name="theme-color" content="#07090f">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -496,7 +496,7 @@ function draw() {
   for (const p of particles || []) { ctx.fillStyle = p.c; ctx.fillRect(p.x, p.y, 4, 4); }
   for (const f of floaters || []) { ctx.globalAlpha = Math.min(1, f.life / 20); txt(f.t, f.x, f.y, 12, f.c); ctx.globalAlpha = 1; }
   drawHUD();
-  if (state === 'title') overlay('THE BANK JOB', [
+  if (state === 'title') overlay('BANK JOB', [
     'Escape the GOVERNMENT. Reach FREEDOM.', 'Collect BTC. Jump over the rules (TAX, BAN, KYC...).', '',
     'Arrows / WASD: move & climb ladders', 'SPACE / Z: jump', 'Grab the KEYS for self-custody: smash rules!', '', 'Press ENTER to start' + (maxLvl > 1 ? '  (1-' + Math.min(9, maxLvl) + ' pick level, C = continue at ' + maxLvl + ')' : '')]);
   if (state === 'over') overlay('REGULATED OUT', ['Final score: ' + score, 'High score: ' + hi, '', 'Press ENTER to try again'], '#ff8a80');

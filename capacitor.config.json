@@ -1,6 +1,6 @@
 {
   "appId": "com.thebankjob.game",
-  "appName": "The Bank Job",
+  "appName": "Bank Job",
   "webDir": "www",
   "backgroundColor": "#07090f",
   "android": {
