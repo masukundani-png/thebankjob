@@ -124,6 +124,18 @@ function getCfg(n) {
 let state = 'title', level = 1, lives = 3, score = 0, hi = +(localStorage.getItem('cbc_hi') || 0);
 let maxLvl = +(localStorage.getItem('cbc_max') || 1), banner = 0, drones = [], ice = [], dSpawn = 0;
 let P, barrels, coins, key, particles, floaters, tick = 0, spawnT = 0, stateT = 0, govThrow = 0;
+let combo = 0, boss = null, levelStats = null, clearSummary = null, isDaily = false;
+const COMBO_TIERS = [[0, 1], [3, 1.25], [6, 1.5], [10, 2], [15, 2.5], [20, 3]];
+function comboMult() { let m = 1; for (const [n, mm] of COMBO_TIERS) if (combo >= n) m = mm; return m; }
+function award(base, x, y, color, tag = '') {
+  const mult = comboMult(), pts = Math.round(base * mult);
+  score += pts; combo++;
+  if (levelStats) levelStats.comboBonus += pts - base;
+  addFloat(x, y, (mult > 1 ? 'x' + mult + ' ' : '') + '+' + pts + (tag ? ' ' + tag : ''), color);
+  return pts;
+}
+function todayStr() { const d = new Date(); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); }
+function dailySeed() { let h = 0; for (const c of todayStr()) h = (h * 31 + c.charCodeAt(0)) >>> 0; return (h % 400) + 6; }
 
 const keys = {};
 const norm = e => e.code === 'Space' ? ' ' : e.key;
@@ -150,8 +162,12 @@ addEventListener('contextmenu', e => e.preventDefault());
 cv.addEventListener('pointerdown', e => {
   window.focus();
   if (state !== 'title' && state !== 'over') return;
+  if (state !== 'title') { onPress('Enter'); return; }
   const r = cv.getBoundingClientRect(), cy = (e.clientY - r.top) * H / r.height;
-  onPress(state === 'title' && maxLvl > 1 && cy > 578 ? 'c' : 'Enter');
+  let rowY = 594;
+  if (maxLvl > 1) { if (cy > rowY - 4 && cy < rowY + 34) { onPress('c'); return; } rowY += 36; }
+  if (cy > rowY - 4 && cy < rowY + 34) { onPress('t'); return; }
+  onPress('Enter');
 });
 const L = () => keys.ArrowLeft || keys.a || keys.A;
 const R = () => keys.ArrowRight || keys.d || keys.D;
@@ -160,9 +176,10 @@ const D = () => keys.ArrowDown || keys.s || keys.S;
 
 function onPress(k) {
   if (state === 'title' || state === 'over') {
-    if ((k === 'c' || k === 'C') && state === 'title' && maxLvl > 1) { level = maxLvl; lives = 3; score = 0; startLevel(); return; }
-    if (/^[1-9]$/.test(k) && +k <= maxLvl && state === 'title') { level = +k; lives = 3; score = 0; startLevel(); return; }
-    if (k === 'Enter' || k === ' ') { level = 1; lives = 3; score = 0; startLevel(); }
+    if ((k === 'c' || k === 'C') && state === 'title' && maxLvl > 1) { level = maxLvl; lives = 3; score = 0; isDaily = false; startLevel(); return; }
+    if (/^[1-9]$/.test(k) && +k <= maxLvl && state === 'title') { level = +k; lives = 3; score = 0; isDaily = false; startLevel(); return; }
+    if ((k === 't' || k === 'T') && state === 'title') { isDaily = true; level = 1; lives = 3; score = 0; startLevel(); return; }
+    if (k === 'Enter' || k === ' ') { isDaily = false; level = 1; lives = 3; score = 0; startLevel(); }
     return;
   }
   if (state === 'play' && (k === ' ' || k === 'z' || k === 'Z') && P.ground && !P.climb) {
@@ -172,12 +189,15 @@ function onPress(k) {
 
 function startLevel() {
   coins = coinSpots.map(([pi, x]) => ({ x, y: surf(plats[pi], x) - 26, got: false, ph: Math.random() * 6, cur: CRYPTO[Math.random() * CRYPTO.length | 0] }));
-  cfg = getCfg(level);
+  cfg = getCfg(isDaily ? dailySeed() + level - 1 : level);
   const ks = cfg.lock ? [[596, 2], [60, 3], [560, 4]] : [[596, 2]];
   key = ks.map(([x, pi]) => ({ x, y: surf(plats[pi], x) - 24, got: false }));
   ice = cfg.ice ? (cfg.zones || [{ p: 1, x1: 200, x2: 380 }, { p: 3, x1: 240, x2: 420 }, { p: 4, x1: 300, x2: 500 }]) : [];
   drones = []; dSpawn = 200; banner = 170;
-  if (level > maxLvl) { maxLvl = level; try { localStorage.setItem('cbc_max', maxLvl); } catch (e) {} }
+  boss = cfg.boss ? { hp: 3, maxHp: 3, dead: false, cool: 0 } : null;
+  combo = 0;
+  levelStats = { coinsTotal: coins.length, coinsGot: 0, keysTotal: key.length, keysGot: 0, cryptoPts: 0, hazardPts: 0, comboBonus: 0, bossBonus: 0, hitTaken: false, startTick: tick };
+  if (!isDaily && level > maxLvl) { maxLvl = level; try { localStorage.setItem('cbc_max', maxLvl); } catch (e) {} }
   barrels = []; particles = []; floaters = [];
   spawnT = 60; resetPlayer(); state = 'play';
 }
@@ -253,35 +273,51 @@ function update() {
   }
 
   // exit
-  if (P.y < 200 && P.x > EXIT.x && P.x < EXIT.x + EXIT.w && (!cfg.lock || key.every(k => k.got))) {
-    const bonus = 500 + coins.filter(c => c.got).length * 20;
-    score += bonus; addFloat(P.x, P.y - 60, 'FREEDOM +' + bonus, '#7dffb0');
-    beep(660, .12); setTimeout(() => beep(880, .2), 120); setTimeout(() => beep(1180, .3), 260);
-    state = 'clear'; stateT = 110; barrels.forEach(b => burst(b.x, b.y - 10, '#8aa0b8', 6)); barrels = []; drones = [];
+  if (P.y < 200 && P.x > EXIT.x && P.x < EXIT.x + EXIT.w && (!cfg.lock || key.every(k => k.got)) && (!cfg.boss || (boss && boss.dead))) {
+    enterClear();
     return;
   }
 
   // coins & key
   for (const c of coins) if (!c.got && Math.abs(c.x - P.x) < 16 && Math.abs(c.y - (P.y - 18)) < 24) {
-    c.got = true; score += 100; addFloat(c.x, c.y - 10, '+100'); burst(c.x, c.y, '#ffc107', 8); beep(988, .06, 'square', .05); setTimeout(() => beep(1318, .1), 55);
+    c.got = true; levelStats.coinsGot++;
+    levelStats.cryptoPts += award(100, c.x, c.y - 10, '#ffd34d');
+    burst(c.x, c.y, c.cur.c, 8); beep(988, .06, 'square', .05); setTimeout(() => beep(1318, .1), 55);
   }
   for (const k of key) if (!k.got && Math.abs(k.x - P.x) < 18 && Math.abs(k.y - (P.y - 18)) < 26) {
-    k.got = true; P.inv = 60 * (cfg.lock ? 5 : 7);
+    k.got = true; P.inv = 60 * (cfg.lock ? 5 : 7); levelStats.keysGot++; combo++;
     addFloat(P.x, P.y - 50, cfg.lock ? 'KEY ' + key.filter(q => q.got).length + '/' + key.length : 'SELF-CUSTODY!', '#7dd3ff'); beep(520, .3, 'triangle', .07, 500);
   }
 
   // barrels
-  if (--spawnT <= 0) {
+  if (!(boss && boss.dead) && --spawnT <= 0) {
     const fire = cfg.fire && Math.random() < .4, n = cfg.boss && !fire && Math.random() < .45 ? 3 : 1;
     for (let i = 0; i < n; i++) spawnBarrel(fire, i * 30);
     spawnT = Math.max(48, 150 - level * 10) * (n > 1 ? 1.5 : 1) + Math.random() * 40;
   }
-  if (cfg.drones && --dSpawn <= 0) {
+  if (cfg.drones && !(boss && boss.dead) && --dSpawn <= 0) {
     const pi = 1 + (Math.random() * 4 | 0), left = Math.random() < .5;
     drones.push({ pi, x: left ? -20 : 660, dir: left ? 1 : -1, warn: 55, y: 0 });
     dSpawn = Math.max(100, 320 - level * 12) + Math.random() * 90;
   }
   if (banner > 0) banner--;
+  // boss fight: touch the government while shielded to damage it
+  if (boss && !boss.dead) {
+    if (boss.cool > 0) boss.cool--;
+    const bx = GOV.x + GOV.w / 2;
+    if (P.inv > 0 && boss.cool <= 0 && P.ground && Math.abs(P.y - surf(plats[5], P.x)) < 10 && Math.abs(P.x - bx) < 46) {
+      boss.hp--; boss.cool = 50; shake = 10; buzz(25);
+      burst(bx, surf(plats[5], bx) - 60, '#ff5252', 12); beep(150, .12, 'sawtooth', .05, -80);
+      if (boss.hp <= 0) {
+        boss.dead = true; levelStats.bossBonus = 1000; score += 1000; combo = 0;
+        addFloat(bx, surf(plats[5], bx) - 90, 'BOSS DEFEATED +1000', '#ffd34d');
+        burst(bx, surf(plats[5], bx) - 70, '#ffd34d', 26); shake = 20;
+        beep(220, .15); setTimeout(() => beep(330, .15), 100); setTimeout(() => beep(440, .25), 200);
+      } else {
+        addFloat(bx, surf(plats[5], bx) - 90, 'BOSS ' + boss.hp + '/' + boss.maxHp, '#ff8a8a');
+      }
+    }
+  }
   const bs = Math.min(3.6, 1.5 + level * .15);
   for (const b of barrels) {
     b.rot += b.dir * .12;
@@ -299,11 +335,11 @@ function update() {
     }
     // hop bonus
     if (!b.scored && !P.ground && !P.climb && Math.abs(b.x - P.x) < 14 && b.y - P.y > 0 && b.y - P.y < 60) {
-      b.scored = true; score += 50; addFloat(P.x, P.y - 40, '+50 JUMP', '#9be7ff'); beep(760, .05, 'triangle', .05);
+      b.scored = true; levelStats.hazardPts += award(50, P.x, P.y - 40, '#9be7ff', 'JUMP'); beep(760, .05, 'triangle', .05);
     }
     // collision
     if (Math.abs(b.x - P.x) < 18 && Math.abs((b.y - 12) - (P.y - 22)) < 24) {
-      if (P.inv > 0) { b.dead = true; score += 200; addFloat(b.x, b.y - 20, 'DECENTRALIZED +200', '#7dd3ff'); burst(b.x, b.y - 12, '#7dd3ff', 14); beep(200, .15, 'sawtooth', .06, -100); }
+      if (P.inv > 0) { b.dead = true; levelStats.hazardPts += award(200, b.x, b.y - 20, '#7dd3ff', 'DECENTRALIZED'); burst(b.x, b.y - 12, '#7dd3ff', 14); beep(200, .15, 'sawtooth', .06, -100); }
       else { die(); return; }
     }
     if (b.x < -30 || b.y > 760) b.dead = true;
@@ -315,7 +351,7 @@ function update() {
     const p = plats[d.pi];
     d.y = surf(p, Math.max(p.x1, Math.min(p.x2, d.x))) - 30 + Math.sin(tick * .15) * 4;
     if (Math.abs(d.x - P.x) < 18 && Math.abs(d.y - (P.y - 24)) < 20) {
-      if (P.inv > 0) { d.dead = true; score += 200; addFloat(d.x, d.y - 10, 'DEFUNDED +200', '#7dd3ff'); burst(d.x, d.y, '#7dd3ff', 14); beep(200, .15, 'sawtooth', .06, -100); }
+      if (P.inv > 0) { d.dead = true; levelStats.hazardPts += award(200, d.x, d.y - 10, '#7dd3ff', 'DEFUNDED'); burst(d.x, d.y, '#7dd3ff', 14); beep(200, .15, 'sawtooth', .06, -100); }
       else { die(); return; }
     }
     if (d.x < -40 || d.x > 680) d.dead = true;
@@ -333,12 +369,38 @@ function updateFx() {
 
 const buzz = ms => { try { navigator.vibrate && navigator.vibrate(ms); } catch (e) {} };
 function die() {
-  buzz([60, 40, 120]); shake = 16;
+  buzz([60, 40, 120]); shake = 16; combo = 0;
+  if (levelStats) levelStats.hitTaken = true;
   state = 'dying'; stateT = 90; burst(P.x, P.y - 20, '#9fb4c7', 22); burst(P.x, P.y - 20, '#ff9800', 10);
   beep(400, .5, 'sawtooth', .07, -350);
 }
 function endGame() {
-  state = 'over'; if (score > hi) { hi = score; try { localStorage.setItem('cbc_hi', hi); } catch (e) {} }
+  state = 'over';
+  if (isDaily) {
+    const dk = 'tbj_daily_' + todayStr(), dHi = +(localStorage.getItem(dk) || 0);
+    if (score > dHi) { try { localStorage.setItem(dk, score); } catch (e) {} }
+  } else if (score > hi) { hi = score; try { localStorage.setItem('cbc_hi', hi); } catch (e) {} }
+}
+
+// tallies the level-clear reward breakdown: crypto, hazards, boss, portal, and the skill bonuses
+function enterClear() {
+  const coinsGot = coins.filter(c => c.got).length, portalBase = 500 + coinsGot * 20;
+  const perfect = levelStats.coinsTotal > 0 && coinsGot === levelStats.coinsTotal && !levelStats.hitTaken;
+  const keyMaster = levelStats.keysTotal > 0 && levelStats.keysGot === levelStats.keysTotal;
+  const elapsed = (tick - levelStats.startTick) / 60;
+  const speedBonus = Math.round(Math.max(0, Math.min(1, (60 - elapsed) / 45)) * 250);
+  const milestone = level % 10 === 0 ? 2500 : 0;
+  const perfectBonus = perfect ? 500 : 0, keyBonus = keyMaster ? 300 : 0;
+  score += portalBase + perfectBonus + keyBonus + speedBonus + milestone;
+  clearSummary = {
+    coinsGot, coinsTotal: levelStats.coinsTotal, cryptoPts: levelStats.cryptoPts, hazardPts: levelStats.hazardPts,
+    comboBonus: levelStats.comboBonus, bossBonus: levelStats.bossBonus, portalBase, perfect, perfectBonus,
+    keyMaster, keyBonus, speedBonus, milestone,
+    total: levelStats.cryptoPts + levelStats.hazardPts + levelStats.bossBonus + portalBase + perfectBonus + keyBonus + speedBonus + milestone,
+  };
+  addFloat(P.x, P.y - 60, 'FREEDOM +' + portalBase, '#7dffb0');
+  beep(660, .12); setTimeout(() => beep(880, .2), 120); setTimeout(() => beep(1180, .3), 260);
+  state = 'clear'; stateT = 190; barrels.forEach(b => burst(b.x, b.y - 10, '#8aa0b8', 6)); barrels = []; drones = [];
 }
 
 // ---------- drawing ----------
@@ -452,6 +514,14 @@ function drawGov() {
   ctx.restore();
   glass(x + w / 2 - 38, b + 6, 76, 16, 8, 'rgba(255,80,80,.14)', 'rgba(255,120,120,.4)');
   txt('GOVERNMENT', x + w / 2, b + 18, 8.5, '#ff9a9a');
+  if (boss && !boss.dead) {
+    const hpw = 70, hx = x + w / 2 - hpw / 2, hy = b - h - 54;
+    glass(hx, hy, hpw, 10, 5, 'rgba(255,80,80,.15)', 'rgba(255,120,120,.5)');
+    ctx.fillStyle = '#ff5252'; rr(hx + 2, hy + 2, Math.max(0, (hpw - 4) * boss.hp / boss.maxHp), 6, 3); ctx.fill();
+    txt('BOSS', x + w / 2, hy - 4, 8, '#ff9a9a');
+  } else if (boss && boss.dead) {
+    txt('DEFEATED', x + w / 2, b - h - 44, 9, '#7dffb0');
+  }
 }
 
 function drawExit() {
@@ -610,6 +680,10 @@ function drawHUD() {
   const got = coins ? coins.filter(c => c.got).length : 0;
   coinIcon(380, 21, CRYPTO[0], 8); txt(got + '/' + (coins ? coins.length : 0), 393, 26, 13, '#ffd9a0', 'left', 800);
   txt('LVL ' + level, W - 24, 26, 13, cfg.pc[1], 'right', 800);
+  if (combo >= 3) {
+    glass(252, 10, 110, 22, 11, 'rgba(255,154,60,.18)', 'rgba(255,154,60,.55)');
+    txt('COMBO x' + comboMult(), 307, 25, 10, '#ffb066', 'center', 800);
+  }
   if (P && P.inv > 0) {
     rr(W / 2 - 52, 42, 104, 6, 3); ctx.fillStyle = 'rgba(255,255,255,.12)'; ctx.fill();
     ctx.save(); glow('#7dd3ff', 8); rr(W / 2 - 52, 42, Math.max(6, 104 * Math.min(1, P.inv / 420)), 6, 3); ctx.fillStyle = '#7dd3ff'; ctx.fill(); ctx.restore();
@@ -630,28 +704,36 @@ function gradText(s, x, y, size, c1, c2, glowCol) {
 }
 
 function drawTitle() {
-  card(40, 90, 560, 540);
-  drawRobotAt(W / 2, 215 + Math.sin(tick * .06) * 4, { face: 1, anim: 0, ground: false, climb: false, moving: false, inv: 0 }, 2);
-  gradText('BANK JOB', W / 2, 302, 58, '#ffb347', '#ff5e8a', '#ff7a5a');
-  txt('Stack crypto. Dodge fiat. Outrun the government.', W / 2, 332, 14, 'rgba(255,255,255,.62)', 'center', 500);
+  card(40, 80, 560, 610);
+  drawRobotAt(W / 2, 210 + Math.sin(tick * .06) * 4, { face: 1, anim: 0, ground: false, climb: false, moving: false, inv: 0 }, 2);
+  gradText('BANK JOB', W / 2, 290, 54, '#ffb347', '#ff5e8a', '#ff7a5a');
+  txt('Stack crypto. Dodge fiat. Chain combos. Outrun the state.', W / 2, 320, 13, 'rgba(255,255,255,.62)', 'center', 500);
   const rows = [
-    [() => coinIcon(120, 378, CRYPTO[1], 11), 'Collect crypto', 'BTC  ETH  SOL  DOGE'],
-    [() => coinIcon(120, 424, FIAT[0], 11), 'Jump over fiat', 'USD  EUR  ZAR'],
-    [() => { ctx.save(); glow('#7dd3ff', 8); ctx.strokeStyle = '#8fe0ff'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(116, 466, 5, 0, 7); ctx.moveTo(121, 466); ctx.lineTo(131, 466); ctx.stroke(); ctx.restore(); }, 'Grab KEYS', 'Self-custody smashes fiat'],
+    [() => coinIcon(120, 352, CRYPTO[1], 11), 'Collect crypto', 'BTC  ETH  SOL  DOGE'],
+    [() => coinIcon(120, 394, FIAT[0], 11), 'Jump over fiat', 'USD  EUR  ZAR'],
+    [() => { ctx.save(); glow('#7dd3ff', 8); ctx.strokeStyle = '#8fe0ff'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(116, 436, 5, 0, 7); ctx.moveTo(121, 436); ctx.lineTo(131, 436); ctx.stroke(); ctx.restore(); }, 'Grab KEYS', 'Self-custody smashes fiat'],
   ];
-  rows.forEach(([icon, a, b], i) => { icon(); txt(a, 150, 383 + i * 45 - 0, 15, '#fff', 'left', 800); txt(b, 150, 401 + i * 45, 11, 'rgba(255,255,255,.55)', 'left', 500); });
+  rows.forEach(([icon, a, b], i) => { icon(); txt(a, 150, 352 + i * 42, 15, '#fff', 'left', 800); txt(b, 150, 368 + i * 42, 11, 'rgba(255,255,255,.55)', 'left', 500); });
+  txt('Chain actions without getting hit — up to a x3 FREEDOM COMBO', W / 2, 490, 11.5, '#ffb066', 'center', 700);
   txt(isTouch ? 'Use the on-screen buttons' : 'Arrows / WASD to move  ·  Space to jump', W / 2, 512, 12, 'rgba(255,255,255,.5)', 'center', 500);
-  pill(isTouch ? 'TAP TO START' : 'PRESS ENTER', W / 2, 555, 230, 46, '#ff9a3c', '#ff4f7b', .025);
+  pill(isTouch ? 'TAP TO START' : 'PRESS ENTER', W / 2, 554, 230, 46, '#ff9a3c', '#ff4f7b', .025);
+  let rowY = 594;
   if (maxLvl > 1) {
-    glass(W / 2 - 115, 584, 230, 32, 16, 'rgba(255,255,255,.06)');
-    txt(isTouch ? 'CONTINUE · LEVEL ' + maxLvl : 'C  continue at level ' + maxLvl, W / 2, 605, 12, '#9be7ff', 'center', 700);
+    glass(W / 2 - 115, rowY, 230, 30, 15, 'rgba(255,255,255,.06)');
+    txt(isTouch ? 'CONTINUE · LEVEL ' + maxLvl : 'C  continue at level ' + maxLvl, W / 2, rowY + 20, 11.5, '#9be7ff', 'center', 700);
+    rowY += 36;
   }
+  const dHi = +(localStorage.getItem('tbj_daily_' + todayStr()) || 0);
+  glass(W / 2 - 115, rowY, 230, 30, 15, 'rgba(255,214,140,.08)', 'rgba(255,214,140,.35)');
+  txt((isTouch ? 'DAILY CHALLENGE' : 'T  daily challenge') + '  ·  best ' + dHi, W / 2, rowY + 20, 11.5, '#ffd48c', 'center', 700);
 }
 function drawOver() {
   card(70, 210, 500, 300);
-  gradText('REGULATED OUT', W / 2, 290, 40, '#ff8a8a', '#ff4f7b', '#ff4f4f');
+  gradText(isDaily ? 'DAILY RUN OVER' : 'REGULATED OUT', W / 2, 290, 38, '#ff8a8a', '#ff4f7b', '#ff4f4f');
   txt('FINAL SCORE', W / 2, 335, 11, 'rgba(255,255,255,.5)'); txt(String(score), W / 2, 372, 40, '#fff', 'center', 900);
-  txt(score > 0 && score >= hi ? 'NEW HIGH SCORE!' : 'High score ' + hi, W / 2, 398, 13, score > 0 && score >= hi ? '#ffd34d' : 'rgba(255,255,255,.55)');
+  const best = isDaily ? +(localStorage.getItem('tbj_daily_' + todayStr()) || 0) : hi;
+  const label = isDaily ? (score > 0 && score >= best ? 'NEW DAILY BEST!' : 'Daily best ' + best) : (score > 0 && score >= best ? 'NEW HIGH SCORE!' : 'High score ' + best);
+  txt(label, W / 2, 398, 13, score > 0 && score >= best ? '#ffd34d' : 'rgba(255,255,255,.55)');
   pill(isTouch ? 'TAP TO RETRY' : 'PRESS ENTER', W / 2, 452, 220, 44, '#ff9a3c', '#ff4f7b', .025);
 }
 function drawBanner() {
@@ -688,10 +770,28 @@ function draw() {
   if (state === 'title') drawTitle();
   if (state === 'over') drawOver();
   if (banner > 0 && state === 'play') drawBanner();
-  if (state === 'clear') {
-    glass(90, 318, W - 180, 76, 22, 'rgba(8,24,20,.85)', 'rgba(125,255,176,.45)');
-    txt('LEVEL ' + level + ' CLEARED', W / 2, 364, 28, '#7dffb0', 'center', 900);
-  }
+  if (state === 'clear') drawClear();
+}
+
+function drawClear() {
+  const s = clearSummary; if (!s) return;
+  const lines = [['Crypto', '+' + s.cryptoPts, '#ffd34d']];
+  if (s.hazardPts) lines.push(['Hazards', '+' + s.hazardPts, '#9be7ff']);
+  if (s.bossBonus) lines.push(['Boss', '+' + s.bossBonus, '#ff9a9a']);
+  lines.push(['Portal', '+' + s.portalBase, '#7dffb0']);
+  if (s.perfectBonus) lines.push(['Perfect level', '+' + s.perfectBonus, '#ffd34d']);
+  if (s.keyBonus) lines.push(['Key master', '+' + s.keyBonus, '#9be7ff']);
+  if (s.speedBonus) lines.push(['Speed', '+' + s.speedBonus, '#ff9a3c']);
+  if (s.milestone) lines.push(['Milestone', '+' + s.milestone, '#ffb066']);
+  const h = 96 + lines.length * 22, y = 360 - h / 2;
+  glass(80, y, W - 160, h, 22, 'rgba(8,24,20,.88)', 'rgba(125,255,176,.45)');
+  txt('LEVEL ' + level + ' CLEARED', W / 2, y + 34, 24, '#7dffb0', 'center', 900);
+  lines.forEach(([label, val, c], i) => {
+    const ly = y + 60 + i * 22;
+    txt(label, W / 2 - 120, ly, 12, 'rgba(255,255,255,.7)', 'left', 600);
+    txt(val, W / 2 + 120, ly, 12, c, 'right', 800);
+  });
+  txt('TOTAL  ' + s.total, W / 2, y + h - 14, 15, '#fff', 'center', 900);
 }
 
 // ---------- loop (fixed 60fps step) ----------
