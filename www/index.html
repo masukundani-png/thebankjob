@@ -156,8 +156,15 @@ const SHOP = [
 ];
 const SHOP_CATS = ['robot', 'trail', 'boulder', 'coin'];
 const SHOP_LABELS = { robot: 'ROBOT SKIN', trail: 'TRAIL EFFECT', boulder: 'BOULDER SKIN', coin: 'COIN SKIN' };
-const SHOP_ROWY = { robot: 340, trail: 420, boulder: 500, coin: 580 };
+const SHOP_ROWY = { robot: 350, trail: 430, boulder: 510, coin: 590 };
 let coinBank = +(localStorage.getItem('tbj_bank') || 0);
+let botName = (() => { try { return localStorage.getItem('tbj_name') || 'UNIT-7'; } catch (e) { return 'UNIT-7'; } })();
+function renameBot() {
+  let n; try { n = prompt('Name your bot (max 12 characters):', botName); } catch (e) { return; }
+  if (n === null || n === undefined) return;
+  botName = n.trim().slice(0, 12).toUpperCase() || 'UNIT-7';
+  try { localStorage.setItem('tbj_name', botName); } catch (e) {}
+}
 let owned = new Set(JSON.parse(localStorage.getItem('tbj_owned') || '[]'));
 let equipped = Object.assign({ robot: 'robot_classic', trail: 'trail_none', boulder: 'boulder_stone', coin: 'coin_classic' }, JSON.parse(localStorage.getItem('tbj_equipped') || '{}'));
 const shopItem = id => SHOP.find(i => i.id === id);
@@ -250,6 +257,7 @@ cv.addEventListener('pointerdown', e => {
     onPress('p'); return;
   }
   if (state === 'shop') {
+    if (cx > W / 2 - 90 && cx < W / 2 + 90 && cy > 290 && cy < 312) { renameBot(); return; }
     for (const { it, x, y, r } of shopLayout()) if (Math.hypot(cx - x, cy - y) < r + 4) { shopTap(it.id); return; }
     onPress('Enter'); return;
   }
@@ -263,6 +271,8 @@ cv.addEventListener('pointerdown', e => {
   let rowY = 594;
   if (maxLvl > 1) { if (cy > rowY - 4 && cy < rowY + 34) { onPress('c'); return; } rowY += 36; }
   if (cy > rowY - 4 && cy < rowY + 34) { onPress('t'); return; }
+  rowY += 36;
+  if (cy > rowY - 4 && cy < rowY + 34) { onPress('g'); return; }
   onPress('Enter');
 });
 const L = () => keys.ArrowLeft || keys.a || keys.A;
@@ -275,6 +285,7 @@ function onPress(k) {
   if ((k === 'p' || k === 'P' || k === 'Escape') && (state === 'play' || state === 'paused')) {
     state = state === 'play' ? 'paused' : 'play'; return;
   }
+  if (state === 'title' && (k === 'g' || k === 'G')) { state = 'shop'; return; }
   if (state === 'title' || state === 'over') {
     if ((k === 'c' || k === 'C') && state === 'title' && maxLvl > 1) { level = maxLvl; lives = 3; score = 0; isDaily = false; revivesUsed = 0; startLevel(); return; }
     if (/^[1-9]$/.test(k) && +k <= maxLvl && state === 'title') { level = +k; lives = 3; score = 0; isDaily = false; revivesUsed = 0; startLevel(); return; }
@@ -282,8 +293,11 @@ function onPress(k) {
     if (k === 'Enter' || k === ' ') { isDaily = false; level = 1; lives = 3; score = 0; revivesUsed = 0; startLevel(); }
     return;
   }
-  if (state === 'title' && (k === 'g' || k === 'G')) { state = 'shop'; return; }
-  if (state === 'shop') { if (k === 'Enter' || k === ' ' || k === 'Escape' || k === 'g' || k === 'G') state = 'title'; return; }
+  if (state === 'shop') {
+    if (k === 'n' || k === 'N') { renameBot(); return; }
+    if (k === 'Enter' || k === ' ' || k === 'Escape' || k === 'g' || k === 'G') state = 'title';
+    return;
+  }
   if (state === 'reviveOffer') {
     if (k === 'w' || k === 'W') { state = 'reviveAd'; stateT = 90; return; }
     if (k === 'Enter' || k === ' ') endGame();
@@ -872,6 +886,7 @@ function gradText(s, x, y, size, c1, c2, glowCol) {
 function drawTitle() {
   card(40, 80, 560, 646);
   drawRobotAt(W / 2, 210 + Math.sin(tick * .06) * 4, { face: 1, anim: 0, ground: false, climb: false, moving: false, inv: 0 }, 2);
+  txt(botName, W / 2, 254, 13, 'rgba(255,255,255,.65)', 'center', 700);
   gradText('BANK JOB', W / 2, 290, 54, '#ffb347', '#ff5e8a', '#ff7a5a');
   txt('Stack crypto. Dodge fiat. Chain combos. Outrun the state.', W / 2, 320, 13, 'rgba(255,255,255,.62)', 'center', 500);
   const rows = [
@@ -902,6 +917,8 @@ function drawShop() {
   gradText('GARAGE', W / 2, 246, 40, '#ffb347', '#ff5e8a', '#ff7a5a');
   coinIcon(W / 2 - 58, 274, CRYPTO[0], 9);
   txt('WALLET  ' + coinBank, W / 2 - 42, 279, 13, '#ffd9a0', 'left', 800);
+  glass(W / 2 - 90, 290, 180, 22, 11, 'rgba(255,255,255,.06)');
+  txt(botName + '  \u270E  ' + (isTouch ? 'TAP TO RENAME' : 'N to rename'), W / 2, 305, 9.5, '#fff', 'center', 700);
   for (const cat of SHOP_CATS) txt(SHOP_LABELS[cat], W / 2, SHOP_ROWY[cat] - 24, 10.5, 'rgba(255,255,255,.55)', 'center', 700);
   for (const { it, x, y, r } of shopLayout()) {
     const own = isOwned(it), eq = equipped[it.cat] === it.id;
@@ -933,6 +950,7 @@ function shopSwatch(it, x, y, r) {
 function drawOver() {
   card(70, 210, 500, 300);
   gradText(isDaily ? 'DAILY RUN OVER' : 'REGULATED OUT', W / 2, 290, 38, '#ff8a8a', '#ff4f7b', '#ff4f4f');
+  txt(botName, W / 2, 310, 11, 'rgba(255,255,255,.5)');
   txt('FINAL SCORE', W / 2, 335, 11, 'rgba(255,255,255,.5)'); txt(String(score), W / 2, 372, 40, '#fff', 'center', 900);
   const best = isDaily ? +(localStorage.getItem('tbj_daily_' + todayStr()) || 0) : hi;
   const label = isDaily ? (score > 0 && score >= best ? 'NEW DAILY BEST!' : 'Daily best ' + best) : (score > 0 && score >= best ? 'NEW HIGH SCORE!' : 'High score ' + best);
