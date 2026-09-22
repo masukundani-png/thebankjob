@@ -146,6 +146,12 @@ full context).
       best score, independent of the main high score.
 - [x] Furthest level reached and high score both persist locally and are
       selectable/resumable from the title screen.
+- [x] Educational content: a "DID YOU KNOW?" crypto trivia line on the
+      level-clear screen, every 3rd level, randomly selected from a curated
+      fact bank. Confirmed decisions (discussed before building, not
+      assumed): straight/factual tone rather than jokes, random rather than
+      theme-matched selection, every-3rd-level cadence rather than every
+      level, no per-fact content review requested.
 
 ### 8.3 Scoring
 - [x] A combo multiplier (x1 → x3) rewards chaining successful actions

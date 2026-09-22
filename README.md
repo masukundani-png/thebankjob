@@ -35,6 +35,7 @@ has the full history of what's been built and why.
 | Pause / mute | `P`/`Esc` to pause (tap the HUD button on touch); `M` fully mutes SFX, the drum sting, and vibration |
 | Ads | A reserved banner outside the play area, plus two **optional** rewarded prompts (one revive per run, a level-clear 2x). Currently simulated — see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#ads-stub) before shipping to real users |
 | Bot naming | Rename from the GARAGE (`N`, native `prompt()`) |
+| Crypto trivia | A "DID YOU KNOW?" fact on the level-clear screen, every 3rd level, picked at random from a ~25-fact bank |
 
 ## Tech stack
 

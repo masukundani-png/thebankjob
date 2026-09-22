@@ -5,6 +5,11 @@ https://github.com/masukundani-png/thebankjob.
 
 ## 2026-09-22
 
+- **`d73a96a`** Add crypto trivia to the level-clear screen — a "DID YOU
+  KNOW?" line, randomly picked from a ~25-fact bank (Bitcoin, Ethereum,
+  Dogecoin, Solana, general blockchain trivia), shown only on levels
+  divisible by 3.
+- **`b27b2bc`** Add `docs/BRD.md` — the business requirements document.
 - **`bd7f5ff`** Add GARAGE access from the pause menu — `G` or a new row on
   the pause card; closing it returns you to wherever it was opened from
   (title, or back to the paused run) instead of always going to the title
