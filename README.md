@@ -16,8 +16,10 @@ Actions.
 If you're picking this project up to make a change, start with
 [docs/BUILDING.md](docs/BUILDING.md) — it's the step-by-step procedure for
 editing, testing, and shipping a new build. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-explains how the code is organized. [CHANGELOG.md](CHANGELOG.md) has the
-full history of what's been built and why.
+explains how the code is organized. [docs/BRD.md](docs/BRD.md) is the
+business requirements document — objectives, scope, what's built vs. not,
+and how new requests should feed back into it. [CHANGELOG.md](CHANGELOG.md)
+has the full history of what's been built and why.
 
 ## What's in the game
 
