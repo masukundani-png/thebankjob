@@ -254,6 +254,7 @@ let revivesUsed = 0, doubleClaimed = false;
 // the forced prompts never appear anywhere else in the loop; rewarded ads stay optional.
 const Ads = { adFree: (() => { try { return localStorage.getItem('tbj_adfree') === '1'; } catch (e) { return false; } })() };
 let pausedFromPlay = false;
+let shopReturn = 'title';
 const COMBO_TIERS = [[0, 1], [3, 1.25], [6, 1.5], [10, 2], [15, 2.5], [20, 3]];
 function comboMult() { let m = 1; for (const [n, mm] of COMBO_TIERS) if (combo >= n) m = mm; return m; }
 function award(base, x, y, color, tag = '') {
@@ -294,6 +295,7 @@ cv.addEventListener('pointerdown', e => {
   if (state === 'play') { if (Math.hypot(cx - (W - 30), cy - 21) < 22) onPress('p'); return; }
   if (state === 'paused') {
     if (cx > W / 2 - 130 && cx < W / 2 + 130 && cy > 424 && cy < 458) { onPress('m'); return; }
+    if (cx > W / 2 - 130 && cx < W / 2 + 130 && cy > 466 && cy < 500) { onPress('g'); return; }
     onPress('p'); return;
   }
   if (state === 'shop') {
@@ -325,7 +327,7 @@ function onPress(k) {
   if ((k === 'p' || k === 'P' || k === 'Escape') && (state === 'play' || state === 'paused')) {
     state = state === 'play' ? 'paused' : 'play'; return;
   }
-  if (state === 'title' && (k === 'g' || k === 'G')) { state = 'shop'; return; }
+  if ((state === 'title' || state === 'paused') && (k === 'g' || k === 'G')) { shopReturn = state; state = 'shop'; return; }
   if (state === 'title' || state === 'over') {
     if ((k === 'c' || k === 'C') && state === 'title' && maxLvl > 1) { level = maxLvl; lives = 3; score = 0; isDaily = false; revivesUsed = 0; startLevel(); return; }
     if (/^[1-9]$/.test(k) && +k <= maxLvl && state === 'title') { level = +k; lives = 3; score = 0; isDaily = false; revivesUsed = 0; startLevel(); return; }
@@ -335,7 +337,7 @@ function onPress(k) {
   }
   if (state === 'shop') {
     if (k === 'n' || k === 'N') { renameBot(); return; }
-    if (k === 'Enter' || k === ' ' || k === 'Escape' || k === 'g' || k === 'G') state = 'title';
+    if (k === 'Enter' || k === ' ' || k === 'Escape' || k === 'g' || k === 'G') state = shopReturn;
     return;
   }
   if (state === 'reviveOffer') {
@@ -1079,12 +1081,14 @@ function draw() {
 }
 function drawPaused() {
   ctx.fillStyle = 'rgba(4,7,18,.6)'; ctx.fillRect(0, 0, W, H);
-  card(90, 230, 460, 260);
+  card(90, 230, 460, 296);
   gradText('PAUSED', W / 2, 300, 40, '#9be7ff', '#7dd3ff', '#5c6fd6');
   txt('SCORE ' + score, W / 2, 336, 13, 'rgba(255,255,255,.6)');
   pill(isTouch ? 'TAP TO RESUME' : 'P / ESC to resume', W / 2, 384, 280, 46, '#7dd3ff', '#5c6fd6', .02);
   glass(W / 2 - 130, 424, 260, 34, 17, muted ? 'rgba(255,138,138,.12)' : 'rgba(255,255,255,.06)', muted ? 'rgba(255,138,138,.4)' : 'rgba(255,255,255,.18)');
   txt((muted ? 'UNMUTE' : 'MUTE') + (isTouch ? '' : '  \u00B7  M'), W / 2, 446, 12, muted ? '#ff9a9a' : '#e8f2ff', 'center', 700);
+  glass(W / 2 - 130, 466, 260, 34, 17, 'rgba(125,255,176,.1)', 'rgba(125,255,176,.35)');
+  txt('GARAGE  \u00B7  ' + coinBank + ' coins' + (isTouch ? '' : '  \u00B7  G'), W / 2, 488, 12, '#7dffb0', 'center', 700);
 }
 
 function drawAdPlaying() {
