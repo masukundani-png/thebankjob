@@ -100,7 +100,10 @@ function heistSting() {
 
 // ---------- level geometry ----------
 // each platform is a sloped girder; barrels roll downhill (yr > yl = roll right)
-const plats = [
+// levels 1-5 use this exact hand-built layout; level 6+ generates a fresh one per
+// level with genLayout() below (same vertical rhythm, but the platform widths,
+// ladder positions and coin spots all vary), so the climb itself is never memorized.
+const FIXED_PLATS = [
   { x1: 0,  x2: 640, yl: 690, yr: 680 },   // ground, rolls left
   { x1: 0,  x2: 580, yl: 580, yr: 600 },   // rolls right
   { x1: 60, x2: 640, yl: 500, yr: 480 },   // rolls left
@@ -111,13 +114,52 @@ const plats = [
 const surf = (p, x) => p.yl + (p.yr - p.yl) * (x - p.x1) / (p.x2 - p.x1);
 const inP = (p, x) => x >= p.x1 && x <= p.x2;
 
-const ladderDefs = [[0, 1, 120], [1, 2, 520], [2, 3, 140], [3, 4, 500], [4, 5, 300]];
-const ladders = ladderDefs.map(([lo, hi, x]) => ({ x, top: surf(plats[hi], x), bot: surf(plats[lo], x) }));
+const FIXED_LADDER_DEFS = [[0, 1, 120], [1, 2, 520], [2, 3, 140], [3, 4, 500], [4, 5, 300]];
+const FIXED_LADDERS = FIXED_LADDER_DEFS.map(([lo, hi, x]) => ({ x, top: surf(FIXED_PLATS[hi], x), bot: surf(FIXED_PLATS[lo], x) }));
 
-const coinSpots = [
+const FIXED_COIN_SPOTS = [
   [0, 220], [0, 340], [0, 460], [1, 90], [1, 300], [1, 440], [2, 200], [2, 340], [2, 470],
   [3, 110], [3, 250], [3, 400], [4, 200], [4, 400], [4, 560], [5, 200],
 ];
+const FIXED_GOV = { x: 12, w: 96 };
+const FIXED_EXIT = { x: 340, w: 60 };
+const FIXED_KEYS = [[596, 2], [60, 3], [560, 4]]; // [x, platform] for the 3-key boss levels
+
+// the Y rhythm (platform heights) never changes -- gravity/jump tuning, the boss's
+// platform, drone heights etc. all assume it. Only x-spans, slopes, ladder x and
+// coin x vary per generated level.
+const LAYOUT_Y = [690, 580, 500, 370, 290, 150];
+function genLayout(seedN) {
+  let sd = seedN * 104729 + 7793; const r = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
+  const plats = [{ x1: 0, x2: 640, yl: LAYOUT_Y[0], yr: LAYOUT_Y[0] - 10 }];
+  for (let i = 1; i <= 5; i++) {
+    const top = i === 5, openLeft = i % 2 === 0, gap = 40 + r() * 80;
+    let x1 = openLeft ? gap : 0, x2 = openLeft ? 640 : 640 - gap;
+    if (top) { x1 = 0; x2 = 340 + r() * 90; } // always leaves room for the government building + portal
+    const slope = 12 + r() * 14;
+    plats.push({ x1, x2, yl: i % 2 === 0 ? LAYOUT_Y[i] : LAYOUT_Y[i] - slope, yr: i % 2 === 0 ? LAYOUT_Y[i] - slope : LAYOUT_Y[i] });
+  }
+  const ladders = [];
+  for (let i = 0; i < 5; i++) {
+    const lo = plats[i], hi = plats[i + 1], x0 = Math.max(lo.x1, hi.x1) + 30, x1e = Math.min(lo.x2, hi.x2) - 30;
+    const x = x1e > x0 ? x0 + r() * (x1e - x0) : (Math.max(lo.x1, hi.x1) + Math.min(lo.x2, hi.x2)) / 2;
+    ladders.push({ x, top: surf(hi, x), bot: surf(lo, x) });
+  }
+  const GOV = { x: 12, w: 96 }, top5 = plats[5];
+  const exitMin = GOV.x + GOV.w + 60, exitMax = top5.x2 - 70;
+  const EXIT = { x: exitMax > exitMin ? exitMin + r() * (exitMax - exitMin) : exitMin, w: 60 };
+  const coinSpots = [];
+  for (let i = 0; i <= 5; i++) {
+    const p = plats[i], n = (i === 0 || i === 5) ? 2 : 3, span = Math.max(60, p.x2 - p.x1 - 80);
+    for (let j = 0; j < n; j++) coinSpots.push([i, p.x1 + 40 + r() * span]);
+  }
+  // key spots: near an edge of platforms 2/3/4, clamped to whatever width this level's platforms got
+  const edge = (p, right) => right ? Math.max(p.x1 + 30, p.x2 - 40) : Math.min(p.x2 - 30, p.x1 + 40);
+  const keys = [[edge(plats[2], true), 2], [edge(plats[3], false), 3], [edge(plats[4], true), 4]];
+  return { plats, ladders, GOV, EXIT, coinSpots, keys };
+}
+
+let plats = FIXED_PLATS, ladders = FIXED_LADDERS, GOV = FIXED_GOV, EXIT = FIXED_EXIT;
 const CRYPTO = [ // collectible coins
   { s: 'B', c: '#f7931a', r: '#ffd27a' },   // Bitcoin
   { s: '\u039E', c: '#5c6fd6', r: '#b4c0ff' }, // Ethereum
@@ -129,8 +171,6 @@ const FIAT = [ // rolling hazards
   { l: 'EUR', s: '\u20AC', c: '#2f6fd6', r: '#9cc4ff' },
   { l: 'ZAR', s: 'R', c: '#e08a12', r: '#ffd27a' },
 ];
-const EXIT = { x: 340, w: 60 };
-const GOV = { x: 12, w: 96 };
 const LEVELS = [
   { name: 'LOCAL REGULATOR', tip: 'Fiat rolls downhill. Jump it!', pc: ['#1f8f6b', '#34d399', '#0d5a44'], bg: ['#0d1430', '#070a14'] },
   { name: 'CENTRAL BANK', tip: 'NEW: Inflation fireballs bounce!', fire: true, pc: ['#a8801a', '#f2c94c', '#6b4f0d'], bg: ['#241a0a', '#0f0a04'] },
@@ -314,11 +354,23 @@ function onPress(k) {
 }
 
 function startLevel() {
-  coins = coinSpots.map(([pi, x]) => ({ x, y: surf(plats[pi], x) - 26, got: false, ph: Math.random() * 6, cur: CRYPTO[Math.random() * CRYPTO.length | 0] }));
-  cfg = getCfg(isDaily ? dailySeed() + level - 1 : level);
-  const ks = cfg.lock ? [[596, 2], [60, 3], [560, 4]] : [[596, 2]];
+  const effN = isDaily ? dailySeed() + level - 1 : level;
+  cfg = getCfg(effN);
+  let keySpots;
+  if (effN <= LEVELS.length) {
+    plats = FIXED_PLATS; ladders = FIXED_LADDERS; GOV = FIXED_GOV; EXIT = FIXED_EXIT;
+    coins = FIXED_COIN_SPOTS.map(mkCoin); keySpots = FIXED_KEYS;
+  } else {
+    const L = genLayout(effN);
+    plats = L.plats; ladders = L.ladders; GOV = L.GOV; EXIT = L.EXIT;
+    coins = L.coinSpots.map(mkCoin); keySpots = L.keys;
+  }
+  const ks = cfg.lock ? keySpots : [keySpots[0]];
   key = ks.map(([x, pi]) => ({ x, y: surf(plats[pi], x) - 24, got: false }));
-  ice = cfg.ice ? (cfg.zones || [{ p: 1, x1: 200, x2: 380 }, { p: 3, x1: 240, x2: 420 }, { p: 4, x1: 300, x2: 500 }]) : [];
+  const defaultZones = [{ p: 1, x1: 200, x2: 380 }, { p: 3, x1: 240, x2: 420 }, { p: 4, x1: 300, x2: 500 }];
+  ice = cfg.ice ? (cfg.zones || defaultZones)
+    .map(z => ({ p: z.p, x1: Math.max(plats[z.p].x1 + 10, z.x1), x2: Math.min(plats[z.p].x2 - 10, z.x2) }))
+    .filter(z => z.x2 - z.x1 > 40) : [];
   drones = []; dSpawn = 200; banner = 170; heistSting();
   boss = cfg.boss ? { hp: 3, maxHp: 3, dead: false, cool: 0 } : null;
   combo = 0;
@@ -333,6 +385,7 @@ function resetPlayer() {
   barrels = [];
 }
 
+function mkCoin([pi, x]) { return { x, y: surf(plats[pi], x) - 26, got: false, ph: Math.random() * 6, cur: CRYPTO[Math.random() * CRYPTO.length | 0] }; }
 function addFloat(x, y, t, c = '#ffd34d') { floaters.push({ x, y, t, c, life: 45 }); }
 function burst(x, y, c, n = 10) {
   for (let i = 0; i < n; i++) particles.push({ x, y, vx: (Math.random() - .5) * 6, vy: -Math.random() * 5, life: 30 + Math.random() * 15, c });
