@@ -139,6 +139,48 @@ const LEVELS = [
   { name: 'GLOBAL SUMMIT', tip: 'BOSS: Fiat trains! Grab all 3 KEYS to unseal FREEDOM.', fire: true, drones: true, ice: true, boss: true, lock: true, pc: ['#a83a3a', '#ff7b7b', '#5c1a1a'], bg: ['#2a0a12', '#10040a'] },
 ];
 let cfg = LEVELS[0];
+// ---------- shop (cosmetic only -- never affects difficulty or scoring) ----------
+const SHOP = [
+  { id: 'robot_classic', cat: 'robot', name: 'Classic', price: 0, skin: { body: ['#dbe6f2', '#8ea5c0'], head: ['#f0f5fb', '#a9bbd0'], badge: '#f7931a', visor: '#39f5ff', limb: '#71839e', joint: '#2f3b4f' } },
+  { id: 'robot_stealth', cat: 'robot', name: 'Stealth', price: 250, skin: { body: ['#3a4655', '#181d24'], head: ['#4a5665', '#1c2129'], badge: '#ff5252', visor: '#ff5252', limb: '#232a34', joint: '#0c0f13' } },
+  { id: 'robot_gold', cat: 'robot', name: 'Gold Heist', price: 600, skin: { body: ['#ffe9a8', '#d4a017'], head: ['#fff3cf', '#e0b23c'], badge: '#7dffb0', visor: '#1a1200', limb: '#b9860b', joint: '#7a5900' } },
+  { id: 'robot_neon', cat: 'robot', name: 'Neon', price: 900, skin: { body: ['#ffb3ff', '#7a3cff'], head: ['#c2fbff', '#3cc9ff'], badge: '#39f5ff', visor: '#ff2ee6', limb: '#7a3cff', joint: '#3d1e80' } },
+  { id: 'trail_none', cat: 'trail', name: 'None', price: 0 },
+  { id: 'trail_spark', cat: 'trail', name: 'Spark', price: 300, color: '#ffd34d' },
+  { id: 'trail_frost', cat: 'trail', name: 'Frost', price: 300, color: '#9be7ff' },
+  { id: 'boulder_stone', cat: 'boulder', name: 'Stone', price: 0, rock: ['#9aa4b2', '#5c6672', '#2e3540'] },
+  { id: 'boulder_molten', cat: 'boulder', name: 'Molten', price: 400, rock: ['#ff8a3c', '#c23d0e', '#5c1400'] },
+  { id: 'boulder_glacier', cat: 'boulder', name: 'Glacier', price: 400, rock: ['#cdeeff', '#7fc3e6', '#3d6f8a'] },
+  { id: 'coin_classic', cat: 'coin', name: 'Classic', price: 0 },
+  { id: 'coin_neon', cat: 'coin', name: 'Neon', price: 300 },
+];
+const SHOP_CATS = ['robot', 'trail', 'boulder', 'coin'];
+const SHOP_LABELS = { robot: 'ROBOT SKIN', trail: 'TRAIL EFFECT', boulder: 'BOULDER SKIN', coin: 'COIN SKIN' };
+const SHOP_ROWY = { robot: 340, trail: 420, boulder: 500, coin: 580 };
+let coinBank = +(localStorage.getItem('tbj_bank') || 0);
+let owned = new Set(JSON.parse(localStorage.getItem('tbj_owned') || '[]'));
+let equipped = Object.assign({ robot: 'robot_classic', trail: 'trail_none', boulder: 'boulder_stone', coin: 'coin_classic' }, JSON.parse(localStorage.getItem('tbj_equipped') || '{}'));
+const shopItem = id => SHOP.find(i => i.id === id);
+const isOwned = it => it.price === 0 || owned.has(it.id);
+function shopLayout() {
+  const out = [];
+  for (const cat of SHOP_CATS) {
+    const items = SHOP.filter(i => i.cat === cat), y = SHOP_ROWY[cat], n = items.length;
+    items.forEach((it, i) => out.push({ it, x: W / 2 + (i - (n - 1) / 2) * 84, y, r: 24 }));
+  }
+  return out;
+}
+function shopTap(id) {
+  const it = shopItem(id); if (!it) return;
+  if (!isOwned(it)) {
+    if (coinBank < it.price) { beep(140, .12, 'sawtooth', .05, -60); return; }
+    coinBank -= it.price; owned.add(it.id);
+    try { localStorage.setItem('tbj_bank', coinBank); localStorage.setItem('tbj_owned', JSON.stringify([...owned])); } catch (e) {}
+    beep(660, .1); setTimeout(() => beep(880, .12), 90);
+  } else beep(520, .08, 'triangle', .05);
+  equipped[it.cat] = it.id;
+  try { localStorage.setItem('tbj_equipped', JSON.stringify(equipped)); } catch (e) {}
+}
 const N1 = ['SEC', 'IMF', 'FED', 'ECB', 'OFAC', 'FATF', 'BIS', 'CFTC', 'MICA', 'FinCEN'];
 const N2 = ['CRACKDOWN', 'AUDIT', 'MORATORIUM', 'SANCTIONS', 'LOCKDOWN', 'INJUNCTION', 'BAILOUT', 'SUMMIT'];
 function getCfg(n) {
@@ -207,6 +249,10 @@ cv.addEventListener('pointerdown', e => {
     if (cx > W / 2 - 130 && cx < W / 2 + 130 && cy > 424 && cy < 458) { onPress('m'); return; }
     onPress('p'); return;
   }
+  if (state === 'shop') {
+    for (const { it, x, y, r } of shopLayout()) if (Math.hypot(cx - x, cy - y) < r + 4) { shopTap(it.id); return; }
+    onPress('Enter'); return;
+  }
   if (state === 'reviveOffer') { onPress(cy < 450 ? 'w' : 'Enter'); return; }
   if (state === 'clearChoice' && clearSummary) {
     const lo = clearChoiceLayout(clearSummary);
@@ -236,6 +282,8 @@ function onPress(k) {
     if (k === 'Enter' || k === ' ') { isDaily = false; level = 1; lives = 3; score = 0; revivesUsed = 0; startLevel(); }
     return;
   }
+  if (state === 'title' && (k === 'g' || k === 'G')) { state = 'shop'; return; }
+  if (state === 'shop') { if (k === 'Enter' || k === ' ' || k === 'Escape' || k === 'g' || k === 'G') state = 'title'; return; }
   if (state === 'reviveOffer') {
     if (k === 'w' || k === 'W') { state = 'reviveAd'; stateT = 90; return; }
     if (k === 'Enter' || k === ' ') endGame();
@@ -338,6 +386,10 @@ function update() {
     P.vx = P.ground && onIce(P.x, P.y) ? P.vx + (tv - P.vx) * .04 : tv;
     if (Math.abs(P.vx) > .3) { P.face = Math.sign(P.vx); P.anim += .28; }
     P.x = Math.max(12, Math.min(W - 12, P.x + P.vx));
+    if (equipped.trail !== 'trail_none' && tick % 4 === 0 && (Math.abs(P.vx) > .5 || !P.ground)) {
+      const tc = (shopItem(equipped.trail) || {}).color || '#ffd34d';
+      particles.push({ x: P.x, y: P.y - 16, vx: (Math.random() - .5) * .6, vy: .3, life: 16, c: tc });
+    }
 
     // grab ladder
     for (const l of ladders) {
@@ -366,7 +418,8 @@ function update() {
 
   // coins & key
   for (const c of coins) if (!c.got && Math.abs(c.x - P.x) < 16 && Math.abs(c.y - (P.y - 18)) < 24) {
-    c.got = true; levelStats.coinsGot++;
+    c.got = true; levelStats.coinsGot++; coinBank++;
+    try { localStorage.setItem('tbj_bank', coinBank); } catch (e) {}
     levelStats.cryptoPts += award(100, c.x, c.y - 10, '#ffd34d');
     burst(c.x, c.y, c.cur.c, 8); beep(988, .06, 'square', .05); setTimeout(() => beep(1318, .1), 55);
   }
@@ -652,6 +705,9 @@ function drawCoin(c) {
     ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 1.5; ctx.beginPath();
     ctx.moveTo(x + 9, y - 13); ctx.lineTo(x + 9, y - 5); ctx.moveTo(x + 5, y - 9); ctx.lineTo(x + 13, y - 9); ctx.stroke();
   }
+  if (equipped.coin === 'coin_neon') {
+    ctx.save(); ctx.globalAlpha = .5 + .5 * Math.sin(tick * .15 + c.ph); ctx.strokeStyle = c.cur.r; ctx.lineWidth = 2; disc(x, y, 15); ctx.stroke(); ctx.restore();
+  }
 }
 
 function drawKey() {
@@ -712,8 +768,9 @@ function drawBarrel(b) {
   const f = b.fiat;
   // solid stone boulder body
   ctx.save(); glow('rgba(0,0,0,.5)', 6);
+  const rk = (shopItem(equipped.boulder) || {}).rock || ['#9aa4b2', '#5c6672', '#2e3540'];
   const rock = ctx.createRadialGradient(b.x - 4, cy - 5, 2, b.x, cy, 15);
-  rock.addColorStop(0, '#9aa4b2'); rock.addColorStop(.55, '#5c6672'); rock.addColorStop(1, '#2e3540');
+  rock.addColorStop(0, rk[0]); rock.addColorStop(.55, rk[1]); rock.addColorStop(1, rk[2]);
   disc(b.x, cy, 13); ctx.fillStyle = rock; ctx.fill(); noGlow();
   ctx.strokeStyle = 'rgba(0,0,0,.4)'; ctx.lineWidth = 1.5; disc(b.x, cy, 12.5); ctx.stroke();
   ctx.restore();
@@ -732,6 +789,7 @@ function drawBarrel(b) {
 
 // ----- robot -----
 function drawRobotAt(x, y, o, k = 1) {
+  const sk = (shopItem(equipped.robot) || {}).skin || { body: ['#dbe6f2', '#8ea5c0'], head: ['#f0f5fb', '#a9bbd0'], badge: '#f7931a', visor: '#39f5ff', limb: '#71839e', joint: '#2f3b4f' };
   const sw = Math.sin(o.anim) * 4, air = !o.ground && !o.climb;
   ctx.save();
   if (k !== 1) { ctx.translate(x, y); ctx.scale(k, k); ctx.translate(-x, -y); }
@@ -746,25 +804,25 @@ function drawRobotAt(x, y, o, k = 1) {
   const lf = o.climb ? sw * .6 : (air ? 0 : (o.moving ? sw : 0)), lift = air ? 4 : 0;
   for (const s of [-1, 1]) {
     const off = s * lf, fx = x + s * 4 + (o.climb ? 0 : off * .6), fy = y - 3 - (o.climb ? Math.max(0, off) : lift + Math.max(0, -off) * .6);
-    ctx.strokeStyle = '#71839e'; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(x + s * 4, y - 13); ctx.lineTo(fx, fy); ctx.stroke();
-    rr(fx - 5, fy - 2, 10, 5, 2.5); ctx.fillStyle = '#2f3b4f'; ctx.fill();
+    ctx.strokeStyle = sk.limb; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(x + s * 4, y - 13); ctx.lineTo(fx, fy); ctx.stroke();
+    rr(fx - 5, fy - 2, 10, 5, 2.5); ctx.fillStyle = sk.joint; ctx.fill();
   }
   const arm = o.climb ? sw : (o.ground && o.moving ? -sw * .6 : 0);
-  ctx.strokeStyle = '#71839e'; ctx.lineWidth = 5;
+  ctx.strokeStyle = sk.limb; ctx.lineWidth = 5;
   for (const s of [-1, 1]) {
     ctx.beginPath(); ctx.moveTo(x + s * 11, y - 29); ctx.lineTo(x + s * 14, air ? y - 24 : y - 17 + s * arm); ctx.stroke();
-    ctx.fillStyle = '#2f3b4f'; disc(x + s * 14, air ? y - 24 : y - 17 + s * arm, 3); ctx.fill();
+    ctx.fillStyle = sk.joint; disc(x + s * 14, air ? y - 24 : y - 17 + s * arm, 3); ctx.fill();
   }
-  const bg = ctx.createLinearGradient(0, y - 34, 0, y - 11); bg.addColorStop(0, '#dbe6f2'); bg.addColorStop(1, '#8ea5c0');
+  const bg = ctx.createLinearGradient(0, y - 34, 0, y - 11); bg.addColorStop(0, sk.body[0]); bg.addColorStop(1, sk.body[1]);
   rr(x - 10, y - 34, 20, 23, 7); ctx.fillStyle = bg; ctx.fill(); ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 1; ctx.stroke();
-  ctx.save(); glow('#f7931a', 8); disc(x, y - 23, 5.5); ctx.fillStyle = '#f7931a'; ctx.fill(); ctx.restore();
+  ctx.save(); glow(sk.badge, 8); disc(x, y - 23, 5.5); ctx.fillStyle = sk.badge; ctx.fill(); ctx.restore();
   txt('B', x, y - 20.3, 8, '#fff', 'center', 900);
-  const hg = ctx.createLinearGradient(0, y - 50, 0, y - 32); hg.addColorStop(0, '#f0f5fb'); hg.addColorStop(1, '#a9bbd0');
+  const hg = ctx.createLinearGradient(0, y - 50, 0, y - 32); hg.addColorStop(0, sk.head[0]); hg.addColorStop(1, sk.head[1]);
   rr(x - 11, y - 50, 22, 17, 7); ctx.fillStyle = hg; ctx.fill(); ctx.strokeStyle = 'rgba(255,255,255,.4)'; ctx.stroke();
   rr(x - 8.5, y - 46.5, 17, 10, 5); ctx.fillStyle = '#0a1224'; ctx.fill();
-  ctx.save(); glow('#39f5ff', 8); ctx.fillStyle = '#39f5ff'; const ex = o.face * 1.6;
+  ctx.save(); glow(sk.visor, 8); ctx.fillStyle = sk.visor; const ex = o.face * 1.6;
   disc(x - 3.6 + ex, y - 41.5, 2.2); ctx.fill(); disc(x + 3.6 + ex, y - 41.5, 2.2); ctx.fill(); ctx.restore();
-  ctx.strokeStyle = '#71839e'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x, y - 50); ctx.lineTo(x, y - 56); ctx.stroke();
+  ctx.strokeStyle = sk.limb; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x, y - 50); ctx.lineTo(x, y - 56); ctx.stroke();
   ctx.save(); glow('#ff5252', 10); ctx.fillStyle = '#ff5252'; disc(x, y - 57, 3 + Math.sin(tick * .15) * .4); ctx.fill(); ctx.restore();
   ctx.restore();
 }
@@ -812,7 +870,7 @@ function gradText(s, x, y, size, c1, c2, glowCol) {
 }
 
 function drawTitle() {
-  card(40, 80, 560, 610);
+  card(40, 80, 560, 646);
   drawRobotAt(W / 2, 210 + Math.sin(tick * .06) * 4, { face: 1, anim: 0, ground: false, climb: false, moving: false, inv: 0 }, 2);
   gradText('BANK JOB', W / 2, 290, 54, '#ffb347', '#ff5e8a', '#ff7a5a');
   txt('Stack crypto. Dodge fiat. Chain combos. Outrun the state.', W / 2, 320, 13, 'rgba(255,255,255,.62)', 'center', 500);
@@ -834,6 +892,43 @@ function drawTitle() {
   const dHi = +(localStorage.getItem('tbj_daily_' + todayStr()) || 0);
   glass(W / 2 - 115, rowY, 230, 30, 15, 'rgba(255,214,140,.08)', 'rgba(255,214,140,.35)');
   txt((isTouch ? 'DAILY CHALLENGE' : 'T  daily challenge') + '  ·  best ' + dHi, W / 2, rowY + 20, 11.5, '#ffd48c', 'center', 700);
+  rowY += 36;
+  glass(W / 2 - 115, rowY, 230, 30, 15, 'rgba(125,255,176,.08)', 'rgba(125,255,176,.3)');
+  txt((isTouch ? 'GARAGE' : 'G  garage') + '  ·  ' + coinBank + ' coins', W / 2, rowY + 20, 11.5, '#7dffb0', 'center', 700);
+}
+function drawShop() {
+  card(40, 60, 560, 640);
+  drawRobotAt(W / 2, 150 + Math.sin(tick * .06) * 4, { face: 1, anim: tick * .05, ground: false, climb: false, moving: false, inv: 0 }, 2.1);
+  gradText('GARAGE', W / 2, 246, 40, '#ffb347', '#ff5e8a', '#ff7a5a');
+  coinIcon(W / 2 - 58, 274, CRYPTO[0], 9);
+  txt('WALLET  ' + coinBank, W / 2 - 42, 279, 13, '#ffd9a0', 'left', 800);
+  for (const cat of SHOP_CATS) txt(SHOP_LABELS[cat], W / 2, SHOP_ROWY[cat] - 24, 10.5, 'rgba(255,255,255,.55)', 'center', 700);
+  for (const { it, x, y, r } of shopLayout()) {
+    const own = isOwned(it), eq = equipped[it.cat] === it.id;
+    ctx.save(); if (!own) ctx.globalAlpha = .55;
+    shopSwatch(it, x, y, r);
+    ctx.restore();
+    if (eq) { ctx.strokeStyle = '#7dffb0'; ctx.lineWidth = 3; disc(x, y, r + 4); ctx.stroke(); }
+    else if (!own) { ctx.fillStyle = 'rgba(4,7,18,.7)'; disc(x, y, r); ctx.fill(); }
+    txt(eq ? '\u2713 ' + it.name : own ? it.name : it.price + '', x, y + r + 14, 9, eq ? '#7dffb0' : own ? 'rgba(255,255,255,.6)' : '#ffd34d', 'center', 700);
+  }
+  txt(isTouch ? 'Tap a skin to equip or unlock · tap elsewhere to go back' : 'Click a skin to equip or unlock · ENTER / ESC to go back', W / 2, 668, 10.5, 'rgba(255,255,255,.45)');
+}
+function shopSwatch(it, x, y, r) {
+  if (it.cat === 'robot') {
+    const g = ctx.createLinearGradient(x, y - r, x, y + r); g.addColorStop(0, it.skin.body[0]); g.addColorStop(1, it.skin.body[1]);
+    disc(x, y, r); ctx.fillStyle = g; ctx.fill(); ctx.strokeStyle = it.skin.badge; ctx.lineWidth = 2; disc(x, y, r - 3); ctx.stroke();
+  } else if (it.cat === 'trail') {
+    disc(x, y, r); ctx.fillStyle = 'rgba(255,255,255,.06)'; ctx.fill();
+    if (it.color) { ctx.save(); glow(it.color, 10); ctx.fillStyle = it.color; disc(x, y, 6); ctx.fill(); ctx.restore(); }
+    else { ctx.strokeStyle = 'rgba(255,255,255,.3)'; ctx.setLineDash([3, 3]); disc(x, y, r - 5); ctx.stroke(); ctx.setLineDash([]); }
+  } else if (it.cat === 'boulder') {
+    const rk = it.rock, g = ctx.createRadialGradient(x - 4, y - 5, 2, x, y, r); g.addColorStop(0, rk[0]); g.addColorStop(.55, rk[1]); g.addColorStop(1, rk[2]);
+    disc(x, y, r); ctx.fillStyle = g; ctx.fill();
+  } else if (it.cat === 'coin') {
+    disc(x, y, r); ctx.fillStyle = '#f7931a'; ctx.fill(); txt('B', x, y + 5, 14, '#fff', 'center', 800);
+    if (it.id === 'coin_neon') { ctx.strokeStyle = '#9be7ff'; ctx.lineWidth = 2; disc(x, y, r + 3); ctx.stroke(); }
+  }
 }
 function drawOver() {
   card(70, 210, 500, 300);
@@ -902,6 +997,7 @@ function draw() {
   ctx.fillStyle = vig; ctx.fillRect(-20, -20, W + 40, H + 40);
   if (state !== 'title') drawHUD();
   if (state === 'title') drawTitle();
+  if (state === 'shop') drawShop();
   if (state === 'over') drawOver();
   if (state === 'reviveOffer') drawReviveOffer();
   if (state === 'reviveAd' || state === 'clearAd') drawAdPlaying();
