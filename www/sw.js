@@ -1,5 +1,5 @@
 // Cache-first service worker so the game works offline. Bump VERSION when files change.
-const VERSION = 'tbj-v10';
+const VERSION = 'tbj-v11';
 const FILES = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable-512.png'];
 
 self.addEventListener('install', e => {

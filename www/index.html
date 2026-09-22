@@ -166,6 +166,33 @@ const CRYPTO = [ // collectible coins
   { s: 'S', c: '#8a4df0', r: '#d0b0ff' },   // Solana
   { s: 'D', c: '#c9a227', r: '#ffe58a' },   // Dogecoin
 ];
+const FACTS = [ // crypto trivia shown on the level-clear screen
+  "Bitcoin's creator, Satoshi Nakamoto, has never been publicly identified.",
+  "The Bitcoin genesis block hid a message in its code: a 2009 headline about a bank bailout.",
+  'Only 21 million bitcoins will ever exist -- the last is expected to be mined around the year 2140.',
+  'In 2010, someone paid 10,000 BTC for two pizzas -- the first known commercial Bitcoin purchase.',
+  'Ethereum introduced smart contracts: code that runs automatically, with no middleman.',
+  "Ethereum's 2022 switch to proof-of-stake cut its energy use by more than 99%.",
+  "Dogecoin started in 2013 as a joke based on the 'Doge' meme, with no fixed supply cap.",
+  "Solana can process thousands of transactions per second -- far more than Bitcoin's roughly 7.",
+  'A new Bitcoin block is mined roughly every 10 minutes, on average, by design.',
+  "Bitcoin's issuance is cut in half about every four years -- an event called 'the halving'.",
+  'A blockchain is a chain of blocks, each cryptographically linked to the one before it.',
+  "Lose your private key and you lose your crypto -- there's no password reset.",
+  'Self-custody means holding your own keys instead of trusting an exchange to hold them.',
+  "The 2014 collapse of the Mt. Gox exchange lost roughly 850,000 bitcoins.",
+  "'HODL' began life as a 2013 forum typo for 'hold' and became crypto slang for holding on.",
+  'El Salvador became the first country to adopt Bitcoin as legal tender, in 2021.',
+  "A crypto wallet doesn't store coins -- it stores the keys that prove you own them.",
+  "Ethereum's Vitalik Buterin proposed it in a white paper in 2013, at age 19.",
+  "A confirmed Bitcoin transaction is irreversible -- there's no chargeback.",
+  'Stablecoins are cryptocurrencies designed to hold a steady value, often pegged to a fiat currency.',
+  "Bitcoin's core protocol has never been successfully hacked since it launched in 2009.",
+  'Mining is the process of using computing power to validate transactions and add new blocks.',
+  'A blockchain fork happens when its community disagrees on the rules and the chain splits in two.',
+  'Cold storage means keeping crypto keys on a device that has never touched the internet.',
+  "Satoshi Nakamoto's own holdings, untouched since 2010, are widely estimated at over 1 million BTC.",
+];
 const FIAT = [ // rolling hazards
   { l: 'USD', s: '$', c: '#2e9e50', r: '#8ff0a4' },
   { l: 'EUR', s: '\u20AC', c: '#2f6fd6', r: '#9cc4ff' },
@@ -605,6 +632,7 @@ function enterClear() {
     comboBonus: levelStats.comboBonus, bossBonus: levelStats.bossBonus, portalBase, perfect, perfectBonus,
     keyMaster, keyBonus, speedBonus, milestone,
     total: levelStats.cryptoPts + levelStats.hazardPts + levelStats.bossBonus + portalBase + perfectBonus + keyBonus + speedBonus + milestone,
+    fact: level % 3 === 0 ? FACTS[(Math.random() * FACTS.length) | 0] : null, // every 3rd level only
   };
   addFloat(P.x, P.y - 60, 'FREEDOM +' + portalBase, '#7dffb0');
   beep(660, .12); setTimeout(() => beep(880, .2), 120); setTimeout(() => beep(1180, .3), 260);
@@ -617,7 +645,7 @@ function finishClear() {
   if (doubleClaimed && clearSummary && !clearSummary.doubled) {
     score += clearSummary.total; clearSummary.doubled = true; clearSummary.total *= 2;
   }
-  state = 'clear'; stateT = 170;
+  state = 'clear'; stateT = clearSummary && clearSummary.fact ? 260 : 170; // extra time only when a fact is shown
 }
 
 // ---------- drawing ----------
@@ -926,6 +954,16 @@ function drawHUD() {
   }
 }
 
+function wrapText(str, maxWidth, size, weight = 500) {
+  ctx.font = `${weight} ${size}px ${FONT}`;
+  const words = str.split(' '), lines = []; let cur = '';
+  for (const w of words) {
+    const test = cur ? cur + ' ' + w : w;
+    if (cur && ctx.measureText(test).width > maxWidth) { lines.push(cur); cur = w; } else cur = test;
+  }
+  if (cur) lines.push(cur);
+  return lines;
+}
 function card(x, y, w, h) {
   ctx.fillStyle = 'rgba(4,7,18,.6)'; ctx.fillRect(0, 0, W, H);
   ctx.save(); glow('rgba(0,0,0,.6)', 40); rr(x, y, w, h, 26); ctx.fillStyle = 'rgba(14,20,44,.94)'; ctx.fill(); ctx.restore();
@@ -1102,7 +1140,10 @@ function drawAdPlaying() {
 
 function drawClear() {
   const s = clearSummary; if (!s) return;
-  const lines = clearLines(s), h = 96 + lines.length * 22, y = 360 - h / 2;
+  const lines = clearLines(s);
+  const factLines = s.fact ? wrapText(s.fact, 400, 11) : [];
+  const factH = factLines.length ? 34 + factLines.length * 15 : 0;
+  const h = 96 + lines.length * 22 + factH, y = 360 - h / 2;
   glass(80, y, W - 160, h, 22, 'rgba(8,24,20,.88)', 'rgba(125,255,176,.45)');
   txt('LEVEL ' + level + ' CLEARED', W / 2, y + 34, 24, '#7dffb0', 'center', 900);
   lines.forEach(([label, val, c], i) => {
@@ -1110,7 +1151,14 @@ function drawClear() {
     txt(label, W / 2 - 120, ly, 12, 'rgba(255,255,255,.7)', 'left', 600);
     txt(val, W / 2 + 120, ly, 12, c, 'right', 800);
   });
-  txt('TOTAL  ' + s.total, W / 2, y + h - 14, 15, '#fff', 'center', 900);
+  const totalY = y + 60 + lines.length * 22;
+  txt('TOTAL  ' + s.total, W / 2, totalY, 15, '#fff', 'center', 900);
+  if (factLines.length) {
+    ctx.strokeStyle = 'rgba(255,255,255,.12)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(W / 2 - 160, totalY + 14); ctx.lineTo(W / 2 + 160, totalY + 14); ctx.stroke();
+    txt('DID YOU KNOW?', W / 2, totalY + 32, 9, '#ffd48c', 'center', 800);
+    factLines.forEach((ln, i) => txt(ln, W / 2, totalY + 48 + i * 15, 10.5, 'rgba(255,255,255,.78)', 'center', 500));
+  }
 }
 
 function drawClearChoice() {
