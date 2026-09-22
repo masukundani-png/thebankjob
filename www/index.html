@@ -73,6 +73,26 @@ function beep(f, d = .08, type = 'square', vol = .05, slide = 0) {
     o.connect(g); g.connect(ac.destination); o.start(); o.stop(ac.currentTime + d);
   } catch (e) {}
 }
+// a single filtered noise hit -- the building block for the drum sting below
+function drumHit(t0, dur, freq, vol, q = 1.1) {
+  const n = Math.max(1, ac.sampleRate * dur | 0), buf = ac.createBuffer(1, n, ac.sampleRate), data = buf.getChannelData(0);
+  for (let i = 0; i < n; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / n);
+  const src = ac.createBufferSource(); src.buffer = buf;
+  const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = freq; bp.Q.value = q;
+  const g = ac.createGain(); g.gain.value = vol; g.gain.linearRampToValueAtTime(0, t0 + dur);
+  src.connect(bp); bp.connect(g); g.connect(ac.destination); src.start(t0); src.stop(t0 + dur);
+}
+// heist-briefing drum sting: tense low toms + a hi-hat run, in the spirit of a spy-movie
+// cue -- an original rhythm, not the copyrighted Mission: Impossible theme melody.
+function heistSting() {
+  try {
+    ac = ac || new (window.AudioContext || window.webkitAudioContext)();
+    if (ac.state === 'suspended') ac.resume();
+    const t = ac.currentTime;
+    [0, .14, .28, .50, .64, .78].forEach((o, i) => drumHit(t + o, .12, i % 3 === 0 ? 105 : 150, .1));
+    [0, .07, .14, .21, .28, .35, .50, .57, .64, .71, .78, .85].forEach(o => drumHit(t + o, .035, 5200, .028, 3));
+  } catch (e) {}
+}
 
 // ---------- level geometry ----------
 // each platform is a sloped girder; barrels roll downhill (yr > yl = roll right)
@@ -140,6 +160,7 @@ let revivesUsed = 0, doubleClaimed = false;
 // (e.g. AdMob's Capacitor plugin) before shipping. adFree only hides the banner and
 // the forced prompts never appear anywhere else in the loop; rewarded ads stay optional.
 const Ads = { adFree: (() => { try { return localStorage.getItem('tbj_adfree') === '1'; } catch (e) { return false; } })() };
+let pausedFromPlay = false;
 const COMBO_TIERS = [[0, 1], [3, 1.25], [6, 1.5], [10, 2], [15, 2.5], [20, 3]];
 function comboMult() { let m = 1; for (const [n, mm] of COMBO_TIERS) if (combo >= n) m = mm; return m; }
 function award(base, x, y, color, tag = '') {
@@ -176,7 +197,9 @@ document.querySelectorAll('#pad button').forEach(b => {
 addEventListener('contextmenu', e => e.preventDefault());
 cv.addEventListener('pointerdown', e => {
   window.focus();
-  const r = cv.getBoundingClientRect(), cy = (e.clientY - r.top) * H / r.height;
+  const r = cv.getBoundingClientRect(), cx = (e.clientX - r.left) * W / r.width, cy = (e.clientY - r.top) * H / r.height;
+  if (state === 'play') { if (Math.hypot(cx - (W - 30), cy - 21) < 22) onPress('p'); return; }
+  if (state === 'paused') { onPress('p'); return; }
   if (state === 'reviveOffer') { onPress(cy < 450 ? 'w' : 'Enter'); return; }
   if (state === 'clearChoice' && clearSummary) {
     const lo = clearChoiceLayout(clearSummary);
@@ -195,6 +218,9 @@ const U = () => keys.ArrowUp || keys.w || keys.W;
 const D = () => keys.ArrowDown || keys.s || keys.S;
 
 function onPress(k) {
+  if ((k === 'p' || k === 'P' || k === 'Escape') && (state === 'play' || state === 'paused')) {
+    state = state === 'play' ? 'paused' : 'play'; return;
+  }
   if (state === 'title' || state === 'over') {
     if ((k === 'c' || k === 'C') && state === 'title' && maxLvl > 1) { level = maxLvl; lives = 3; score = 0; isDaily = false; revivesUsed = 0; startLevel(); return; }
     if (/^[1-9]$/.test(k) && +k <= maxLvl && state === 'title') { level = +k; lives = 3; score = 0; isDaily = false; revivesUsed = 0; startLevel(); return; }
@@ -223,13 +249,13 @@ function startLevel() {
   const ks = cfg.lock ? [[596, 2], [60, 3], [560, 4]] : [[596, 2]];
   key = ks.map(([x, pi]) => ({ x, y: surf(plats[pi], x) - 24, got: false }));
   ice = cfg.ice ? (cfg.zones || [{ p: 1, x1: 200, x2: 380 }, { p: 3, x1: 240, x2: 420 }, { p: 4, x1: 300, x2: 500 }]) : [];
-  drones = []; dSpawn = 200; banner = 170;
+  drones = []; dSpawn = 200; banner = 170; heistSting();
   boss = cfg.boss ? { hp: 3, maxHp: 3, dead: false, cool: 0 } : null;
   combo = 0;
   levelStats = { coinsTotal: coins.length, coinsGot: 0, keysTotal: key.length, keysGot: 0, cryptoPts: 0, hazardPts: 0, comboBonus: 0, bossBonus: 0, hitTaken: false, startTick: tick };
   if (!isDaily && level > maxLvl) { maxLvl = level; try { localStorage.setItem('cbc_max', maxLvl); } catch (e) {} }
   barrels = []; particles = []; floaters = [];
-  spawnT = 60; resetPlayer(); state = 'play';
+  spawnT = 95; resetPlayer(); state = 'play';
 }
 function resetPlayer() {
   P = { x: 40, y: surf(plats[0], 40), vx: 0, vy: 0, ground: true, climb: null, face: 1, anim: 0, inv: 0 };
@@ -262,6 +288,7 @@ function landing(x, py, y) {
 }
 
 function update() {
+  if (state === 'paused') return;
   tick++;
   if (govThrow > 0) govThrow--;
   if (state === 'dying') {
@@ -306,7 +333,7 @@ function update() {
 
     // grab ladder
     for (const l of ladders) {
-      if (Math.abs(P.x - l.x) > 12) continue;
+      if (Math.abs(P.x - l.x) > 16) continue;
       if ((U() && P.y <= l.bot + 2 && P.y > l.top + 2) || (D() && P.y >= l.top - 2 && P.y < l.bot - 2)) {
         P.climb = l; P.x = l.x; P.vy = 0; P.ground = false; break;
       }
@@ -344,7 +371,7 @@ function update() {
   if (!(boss && boss.dead) && --spawnT <= 0) {
     const fire = cfg.fire && Math.random() < .4, n = cfg.boss && !fire && Math.random() < .45 ? 3 : 1;
     for (let i = 0; i < n; i++) spawnBarrel(fire, i * 30);
-    spawnT = Math.max(48, 150 - level * 10) * (n > 1 ? 1.5 : 1) + Math.random() * 40;
+    spawnT = Math.max(52, 175 - level * 10) * (n > 1 ? 1.5 : 1) + Math.random() * 40;
   }
   if (cfg.drones && !(boss && boss.dead) && --dSpawn <= 0) {
     const pi = 1 + (Math.random() * 4 | 0), left = Math.random() < .5;
@@ -369,7 +396,7 @@ function update() {
       }
     }
   }
-  const bs = Math.min(3.6, 1.5 + level * .15);
+  const bs = Math.min(3.6, 1.3 + level * .15);
   for (const b of barrels) {
     b.rot += b.dir * .12;
     if (!b.fall) {
@@ -389,7 +416,7 @@ function update() {
       b.scored = true; levelStats.hazardPts += award(50, P.x, P.y - 40, '#9be7ff', 'JUMP'); beep(760, .05, 'triangle', .05);
     }
     // collision
-    if (Math.abs(b.x - P.x) < 18 && Math.abs((b.y - 12) - (P.y - 22)) < 24) {
+    if (Math.abs(b.x - P.x) < 15 && Math.abs((b.y - 12) - (P.y - 22)) < 20) {
       if (P.inv > 0) { b.dead = true; levelStats.hazardPts += award(200, b.x, b.y - 20, '#7dd3ff', 'DECENTRALIZED'); burst(b.x, b.y - 12, '#7dd3ff', 14); beep(200, .15, 'sawtooth', .06, -100); }
       else { die(); return; }
     }
@@ -674,14 +701,24 @@ function drawBarrel(b) {
     disc(b.x, cy, 8); ctx.fillStyle = g; ctx.fill();
     txt('INFL', b.x, cy + 3, 7.5, '#8a2b00', 'center', 800); return;
   }
-  const f = b.fiat, sq = Math.max(.4, Math.abs(Math.cos(b.rot)));
-  ctx.save(); glow(f.c, 10); ctx.translate(b.x, cy); ctx.scale(sq, 1);
-  disc(0, 0, 13); ctx.fillStyle = f.c; ctx.fill(); noGlow();
-  const hl = ctx.createRadialGradient(-4, -5, 1, 0, 0, 14); hl.addColorStop(0, 'rgba(255,255,255,.5)'); hl.addColorStop(1, 'rgba(255,255,255,0)');
-  disc(0, 0, 13); ctx.fillStyle = hl; ctx.fill();
-  ctx.strokeStyle = f.r; ctx.lineWidth = 2.5; disc(0, 0, 12); ctx.stroke();
-  ctx.strokeStyle = 'rgba(255,255,255,.3)'; ctx.lineWidth = 1; disc(0, 0, 8); ctx.stroke();
-  txt(f.s, 0, 6, 16, '#fff', 'center', 800); ctx.restore();
+  const f = b.fiat;
+  // solid stone boulder body
+  ctx.save(); glow('rgba(0,0,0,.5)', 6);
+  const rock = ctx.createRadialGradient(b.x - 4, cy - 5, 2, b.x, cy, 15);
+  rock.addColorStop(0, '#9aa4b2'); rock.addColorStop(.55, '#5c6672'); rock.addColorStop(1, '#2e3540');
+  disc(b.x, cy, 13); ctx.fillStyle = rock; ctx.fill(); noGlow();
+  ctx.strokeStyle = 'rgba(0,0,0,.4)'; ctx.lineWidth = 1.5; disc(b.x, cy, 12.5); ctx.stroke();
+  ctx.restore();
+  // rock cracks rotate with the roll
+  ctx.save(); ctx.translate(b.x, cy); ctx.rotate(b.rot); ctx.strokeStyle = 'rgba(0,0,0,.4)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(-9, -3); ctx.lineTo(-2, 2); ctx.lineTo(3, -4); ctx.moveTo(2, 3); ctx.lineTo(8, 7); ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,.08)'; disc(-4, -6, 3); ctx.fill(); disc(6, 4, 2); ctx.fill();
+  ctx.restore();
+  // currency badge stays upright so it reads while the boulder rolls
+  ctx.save(); glow(f.c, 6);
+  disc(b.x, cy, 7); ctx.fillStyle = f.c; ctx.globalAlpha = .88; ctx.fill(); ctx.globalAlpha = 1; noGlow();
+  ctx.strokeStyle = f.r; ctx.lineWidth = 1.5; disc(b.x, cy, 7); ctx.stroke();
+  txt(f.s, b.x, cy + 5, 12, '#fff', 'center', 800); ctx.restore();
   txt(f.l, b.x, b.y + 10, 7.5, f.r, 'center', 800);
 }
 
@@ -731,7 +768,7 @@ function drawRobot() {
 
 // ----- HUD & screens -----
 function drawHUD() {
-  glass(8, 6, W - 16, 30, 15, 'rgba(8,12,28,.55)');
+  glass(8, 6, W - 64, 30, 15, 'rgba(8,12,28,.55)');
   txt('SCORE', 24, 18, 7.5, 'rgba(255,255,255,.5)', 'left'); txt(String(score).padStart(6, '0'), 24, 31, 14, '#fff', 'left', 800);
   for (let i = 0; i < Math.max(0, lives); i++) {
     const hx = 180 + i * 22; rr(hx, 14, 16, 14, 5); ctx.fillStyle = '#cfe0f0'; ctx.fill();
@@ -739,7 +776,10 @@ function drawHUD() {
   }
   const got = coins ? coins.filter(c => c.got).length : 0;
   coinIcon(380, 21, CRYPTO[0], 8); txt(got + '/' + (coins ? coins.length : 0), 393, 26, 13, '#ffd9a0', 'left', 800);
-  txt('LVL ' + level, W - 24, 26, 13, cfg.pc[1], 'right', 800);
+  txt('LVL ' + level, W - 72, 26, 13, cfg.pc[1], 'right', 800);
+  disc(W - 30, 21, 16); ctx.fillStyle = 'rgba(255,255,255,.08)'; ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,.3)'; ctx.lineWidth = 1; disc(W - 30, 21, 16); ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.fillRect(W - 35, 14, 4, 14); ctx.fillRect(W - 27, 14, 4, 14);
   if (combo >= 3) {
     glass(252, 10, 110, 22, 11, 'rgba(255,154,60,.18)', 'rgba(255,154,60,.55)');
     txt('COMBO x' + comboMult(), 307, 25, 10, '#ffb066', 'center', 800);
@@ -860,6 +900,14 @@ function draw() {
   if (banner > 0 && state === 'play') drawBanner();
   if (state === 'clear') drawClear();
   if (state === 'clearChoice') drawClearChoice();
+  if (state === 'paused') drawPaused();
+}
+function drawPaused() {
+  ctx.fillStyle = 'rgba(4,7,18,.6)'; ctx.fillRect(0, 0, W, H);
+  card(90, 250, 460, 210);
+  gradText('PAUSED', W / 2, 320, 40, '#9be7ff', '#7dd3ff', '#5c6fd6');
+  txt('SCORE ' + score, W / 2, 356, 13, 'rgba(255,255,255,.6)');
+  pill(isTouch ? 'TAP TO RESUME' : 'P / ESC to resume', W / 2, 404, 280, 46, '#7dd3ff', '#5c6fd6', .02);
 }
 
 function drawAdPlaying() {
