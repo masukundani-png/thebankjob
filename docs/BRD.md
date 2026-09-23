@@ -171,8 +171,8 @@ full context).
       coin skin. Confirmed requirement: **cosmetic only, must never affect
       difficulty or scoring** (see `ARCHITECTURE.md`).
 - [x] Player-chosen bot name, shown on the title, garage, pause, and
-      game-over screens. (Deliberately not shown during play itself, to keep
-      the HUD uncluttered — offered as an option, declined.)
+      game-over screens. (Not shown in the in-play HUD or on the level-clear card:
+      of those options, the pause screen was the one chosen.)
 
 ### 8.5 App shell / platform
 - [x] Installable as an offline-capable PWA (manifest + service worker).
