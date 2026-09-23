@@ -5,7 +5,7 @@ https://github.com/masukundani-png/thebankjob.
 
 ## 2026-09-23
 
-- **(this release)** New app icon: the robot, about 25% larger, on the orange→pink
+- **`2c09a6f`** New app icon: the robot, about 25% larger, on the orange→pink
   gradient from the title screen (replacing the small robot on a dark tile,
   which was hard to spot on a dark wallpaper). Android now gets proper
   adaptive-icon foreground/background layers so the gradient fills the whole
