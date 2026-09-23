@@ -5,6 +5,8 @@ https://github.com/masukundani-png/thebankjob.
 
 ## 2026-09-23
 
+- **`f80715f`** Show the bot's name on the pause screen. It previously only
+  appeared on the title, garage and game-over screens.
 - **`5bf90b5`** Add a branded Android launch splash screen (the robot + a
   pixel-font "BANK JOB" wordmark on the dark app background) in place of
   Capacitor's generic default. `make_icons.py` now generates the splash

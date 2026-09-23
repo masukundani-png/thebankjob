@@ -170,8 +170,9 @@ full context).
 - [x] Four cosmetic categories: robot skin, trail effect, boulder skin,
       coin skin. Confirmed requirement: **cosmetic only, must never affect
       difficulty or scoring** (see `ARCHITECTURE.md`).
-- [x] Player-chosen bot name, shown on the title, garage, and game-over
-      screens.
+- [x] Player-chosen bot name, shown on the title, garage, pause, and
+      game-over screens. (Deliberately not shown during play itself, to keep
+      the HUD uncluttered — offered as an option, declined.)
 
 ### 8.5 App shell / platform
 - [x] Installable as an offline-capable PWA (manifest + service worker).
