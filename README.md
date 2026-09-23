@@ -45,9 +45,9 @@ has the full history of what's been built and why.
   audio asset files.
 - **Offline/installable (PWA):** [`www/manifest.webmanifest`](www/manifest.webmanifest)
   + [`www/sw.js`](www/sw.js) (a cache-first service worker).
-- **Icons:** generated procedurally by [`make_icons.py`](make_icons.py)
-  (pure Python stdlib — writes raw PNGs, no image libraries or external
-  assets).
+- **Icons & splash screen:** generated procedurally by
+  [`make_icons.py`](make_icons.py) (pure Python stdlib — writes raw PNGs, no
+  image libraries or external assets).
 - **Android:** [Capacitor](https://capacitorjs.com/) wraps `www/` into a
   native Android project.
 - **CI:** [`.github/workflows/build-apk.yml`](.github/workflows/build-apk.yml)
@@ -63,8 +63,9 @@ has the full history of what's been built and why.
 │   ├── manifest.webmanifest         #   PWA metadata
 │   └── icon-*.png                   #   app icons (generated -- see make_icons.py)
 ├── assets/
-│   └── icon-only.png              # source image @capacitor/assets uses to build the native launcher icon
-├── make_icons.py                  # regenerates every icon file above (pure stdlib, no deps)
+│   ├── icon-only.png              # source image @capacitor/assets uses to build the native launcher icon
+│   └── splash.png, splash-dark.png   # source images for the Android launch splash screen
+├── make_icons.py                  # regenerates every icon/splash image above (pure stdlib, no deps)
 ├── capacitor.config.json          # app id, app name, web dir
 ├── package.json                   # Capacitor dependencies (installed fresh by CI each run)
 ├── .github/workflows/build-apk.yml   # the CI build

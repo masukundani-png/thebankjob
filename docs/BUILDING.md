@@ -61,22 +61,31 @@ for the pattern used throughout this project's history (stub out `document`/
 functions directly). This project has no formal test suite or CI test step —
 every change so far has been verified this way by hand before pushing.
 
-## 4. Regenerate icons (only if you changed them)
+## 4. Regenerate icons / splash screen (only if you changed them)
 
-Icons are generated code, not image files — see
-[`make_icons.py`](../make_icons.py). To change the icon, edit the
-pixel-drawing logic in that file (it's a small procedural pixel-art
-renderer, no image libraries), then from the repo root:
+The icons and the launch splash screen are generated code, not hand-edited
+image files — see [`make_icons.py`](../make_icons.py). To change either,
+edit the pixel-drawing logic in that file (a small procedural pixel-art
+renderer, no image libraries; the robot is drawn once in `robot_px()` and
+shared by the icons and the splash), then from the repo root:
 
 ```bash
 python make_icons.py
 ```
 
 This writes `www/icon-192.png`, `www/icon-512.png`, `www/icon-maskable-512.png`
-(the PWA/manifest icons) and `assets/icon-only.png` (the source image the CI
+(the PWA/manifest icons), `assets/icon-only.png` (the source image the CI
 build feeds to `@capacitor/assets` to generate the native Android launcher
-icon set). Regenerating touches all four, even for a small change, since
-they're all one function with different output sizes/crop margins.
+icon set), and `assets/splash.png` + `assets/splash-dark.png` (the source
+for the Android launch splash screen — the robot and a "BANK JOB" wordmark
+on the app's dark background). Regenerating rewrites all of them, even for a
+small change. Keep the splash artwork inside the central ~1200px of its
+2732×2732 canvas: `@capacitor/assets` crops the edges for tall/wide phones.
+
+If you change the splash background colour, change it in three places:
+`SPLASH_BG` in `make_icons.py`, `backgroundColor` under
+`plugins.SplashScreen` in `capacitor.config.json`, and the
+`--splashBackgroundColor` flags in the workflow.
 
 ## 5. Commit and push to `main`
 
@@ -99,7 +108,8 @@ automatically on every push to `main`. It:
 3. `npx cap add android` — generates the native Android project fresh (it's
    not committed; see `.gitignore`).
 4. `npx @capacitor/assets generate` — builds the full Android launcher icon
-   set from `assets/icon-only.png`.
+   set from `assets/icon-only.png` and the launch splash screens from
+   `assets/splash.png`.
 5. `npx cap sync android` — copies `www/` into the native project.
 6. `./gradlew assembleDebug` — builds `app-debug.apk`.
 7. Uploads it as a workflow artifact named **`the-bank-job-apk`**.
