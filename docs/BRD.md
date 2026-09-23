@@ -176,6 +176,11 @@ full context).
 
 ### 8.5 App shell / platform
 - [x] Installable as an offline-capable PWA (manifest + service worker).
+- [x] Publicly playable in a browser, hosted free on GitHub Pages and
+      redeployed on every push. Decision recorded: made public deliberately
+      (asked, confirmed); the developer-facing "swap in a real ad SDK" note
+      was removed from the simulated-ad screen first. Progress is
+      per-browser and doesn't sync with the Android app.
 - [x] Packaged as a sideloadable Android APK via Capacitor, built
       automatically by CI on every push.
 - [x] A branded launch splash screen (robot + "BANK JOB" wordmark on the

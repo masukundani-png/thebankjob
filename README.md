@@ -8,8 +8,10 @@ Actions.
 
 - **App ID:** `com.thebankjob.game`
 - **Repo:** https://github.com/masukundani-png/thebankjob
-- **Play it in a browser:** open [`www/index.html`](www/index.html) (see
-  [docs/BUILDING.md](docs/BUILDING.md) for how to run it locally)
+- **Play it on the web:** https://masukundani-png.github.io/thebankjob/ (published
+  from `www/` on every push; see [docs/BUILDING.md](docs/BUILDING.md#web-version))
+- **Run it locally:** open [`www/index.html`](www/index.html) or serve `www/` (see
+  [docs/BUILDING.md](docs/BUILDING.md))
 - **Get the Android build:** [Actions tab](https://github.com/masukundani-png/thebankjob/actions) →
   newest successful run → Artifacts → `the-bank-job-apk`
 

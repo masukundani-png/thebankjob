@@ -134,6 +134,28 @@ https://github.com/masukundani-png/thebankjob/actions.
    project before and is an OS/launcher quirk, not a build bug. A full
    uninstall-then-install, or a device reboot after installing, clears it.
 
+## Web version
+
+The same `www/` folder is published as a playable website by a second
+workflow, [`.github/workflows/deploy-web.yml`](../.github/workflows/deploy-web.yml),
+on every push to `main` (alongside the APK build — they're independent).
+Live at https://masukundani-png.github.io/thebankjob/.
+
+**One-time setup (repo owner only):** Settings → Pages → *Build and
+deployment* → **Source: GitHub Actions**. Until that's switched on the web
+workflow fails at its deploy step (harmless, but it shows a red run); after
+enabling it, open Actions → *Deploy web version* → *Run workflow*, or just
+push any commit.
+
+Things that differ from the phone app:
+- Progress (high score, coins, skins, bot name, unlocked levels) lives in
+  the *browser's* `localStorage`, per browser and per device — it does not
+  sync with the Android app or between browsers.
+- Every path in `www/` is relative (no leading `/`), which is what lets the
+  site work under the `/thebankjob/` sub-path. Keep it that way — a
+  root-absolute path like `/icon.png` would break the hosted version.
+- The site is public: anyone with the link can play it and read the code.
+
 ## Known limitations of this pipeline
 
 - **Debug build only.** `assembleDebug` produces an unsigned debug APK,

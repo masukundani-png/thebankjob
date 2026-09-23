@@ -100,7 +100,10 @@ gameplay) and gates nothing else. The two "watch ad" flows
 (`reviveOffer`→`reviveAd` for one optional extra life per run, and
 `clearChoice`→`clearAd` for an optional level-clear score double) are
 currently a **simulated timer** (`drawAdPlaying()` shows "PLAYING SIMULATED
-AD... swap in a real ad SDK here"). There is deliberately no ad shown on a
+AD" — the label is kept on purpose so nobody mistakes it for a real ad, and
+the earlier on-screen developer note about swapping in an SDK was removed
+once the game went public on the web; the swap-in point is documented here
+and in the code comment above `Ads`). There is deliberately no ad shown on a
 normal death — only these two explicitly optional prompts, and the passive
 banner.
 

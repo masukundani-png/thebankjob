@@ -5,6 +5,10 @@ https://github.com/masukundani-png/thebankjob.
 
 ## 2026-09-23
 
+- **(pending)** Publish the game on the web via GitHub Pages
+  (`.github/workflows/deploy-web.yml`, deploys `www/` on every push; needs
+  the one-time Pages setting described in `docs/BUILDING.md`). Removed the
+  developer note from the simulated-ad screen since the game is now public.
 - **`2c09a6f`** New app icon: the robot, about 25% larger, on the orange→pink
   gradient from the title screen (replacing the small robot on a dark tile,
   which was hard to spot on a dark wallpaper). Android now gets proper
