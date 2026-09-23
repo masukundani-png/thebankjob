@@ -1120,6 +1120,7 @@ function draw() {
 function drawPaused() {
   ctx.fillStyle = 'rgba(4,7,18,.6)'; ctx.fillRect(0, 0, W, H);
   card(90, 230, 460, 296);
+  txt(botName, W / 2, 256, 12, 'rgba(255,255,255,.6)', 'center', 700);
   gradText('PAUSED', W / 2, 300, 40, '#9be7ff', '#7dd3ff', '#5c6fd6');
   txt('SCORE ' + score, W / 2, 336, 13, 'rgba(255,255,255,.6)');
   pill(isTouch ? 'TAP TO RESUME' : 'P / ESC to resume', W / 2, 384, 280, 46, '#7dd3ff', '#5c6fd6', .02);
