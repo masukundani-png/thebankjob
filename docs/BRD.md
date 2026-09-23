@@ -177,6 +177,12 @@ full context).
 - [x] Installable as an offline-capable PWA (manifest + service worker).
 - [x] Packaged as a sideloadable Android APK via Capacitor, built
       automatically by CI on every push.
+- [x] A branded launch splash screen (robot + "BANK JOB" wordmark on the
+      dark app background) instead of the generic Capacitor default.
+      **Caveat:** Android 12 and newer restrict the OS launch splash to the
+      app icon on a solid background, so there the splash is the icon
+      rather than the full artwork; older Android versions show the full
+      image. Not yet verified on a physical device.
 - [x] Touch controls (on-screen d-pad + jump) in addition to keyboard.
 - [x] Pause (freezes all game logic) and a full mute (audio + haptics)
       toggle, both reachable via keyboard and touch.

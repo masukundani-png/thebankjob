@@ -3,6 +3,17 @@
 All notable changes, newest first. Commit hashes refer to
 https://github.com/masukundani-png/thebankjob.
 
+## 2026-09-23
+
+- **`5bf90b5`** Add a branded Android launch splash screen (the robot + a
+  pixel-font "BANK JOB" wordmark on the dark app background) in place of
+  Capacitor's generic default. `make_icons.py` now generates the splash
+  images too, sharing one robot drawing with the icons (refactor verified
+  byte-identical for all four existing icons); added the official
+  `@capacitor/splash-screen` plugin and configured it; CI's asset step
+  builds the splash screens. Not yet verified on a physical device — see
+  BRD §8.5 for the Android 12+ caveat.
+
 ## 2026-09-22
 
 - **`d73a96a`** Add crypto trivia to the level-clear screen — a "DID YOU
