@@ -5,6 +5,12 @@ https://github.com/masukundani-png/thebankjob.
 
 ## 2026-09-23
 
+- **(this release)** New app icon: the robot, about 25% larger, on the orange→pink
+  gradient from the title screen (replacing the small robot on a dark tile,
+  which was hard to spot on a dark wallpaper). Android now gets proper
+  adaptive-icon foreground/background layers so the gradient fills the whole
+  masked shape instead of being shrunk inside a dark border. Splash screen
+  unchanged.
 - **`f80715f`** Show the bot's name on the pause screen. It previously only
   appeared on the title, garage and game-over screens.
 - **`5bf90b5`** Add a branded Android launch splash screen (the robot + a

@@ -1,14 +1,15 @@
 """Generate the app's image assets (pure stdlib, no image libraries):
 
   www/icon-192.png, www/icon-512.png, www/icon-maskable-512.png   PWA / manifest icons
-  assets/icon-only.png                                             source for the Android launcher icon
+  assets/icon-only.png                                             Android legacy/round launcher icon source
+  assets/icon-foreground.png, assets/icon-background.png           Android adaptive icon layers (the phone masks these)
   assets/splash.png, assets/splash-dark.png                        source for the Android launch splash screen
 
 Run from the repo root:  python make_icons.py
 """
 import zlib, struct
 
-BG = (12, 17, 36)          # icon tile background
+GRAD_A, GRAD_B = (255, 160, 60), (255, 79, 123)   # icon background: orange -> pink, like the in-game title
 SPLASH_BG = (7, 9, 15)     # launch splash background -- keep in sync with backgroundColor in capacitor.config.json
 
 
@@ -35,8 +36,8 @@ def robot_px(a, b):
     return c
 
 
-def write_png(path, width, height, rows):
-    """rows: iterable of bytes objects, each width*3 bytes of RGB."""
+def write_png(path, width, height, rows, alpha=False):
+    """rows: iterable of bytes objects, each width*3 (RGB) or width*4 (RGBA, alpha=True) bytes."""
     raw = bytearray()
     for row in rows:
         raw.append(0)        # PNG filter type 0 (none) for this scanline
@@ -45,19 +46,46 @@ def write_png(path, width, height, rows):
         body = t + d
         return struct.pack('>I', len(d)) + body + struct.pack('>I', zlib.crc32(body) & 0xffffffff)
     with open(path, 'wb') as f:
-        f.write(b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 2, 0, 0, 0))
+        f.write(b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 6 if alpha else 2, 0, 0, 0))
                 + chunk(b'IDAT', zlib.compress(bytes(raw), 9)) + chunk(b'IEND', b''))
 
 
-def icon(path, size, safe):
-    # safe = fraction of the tile the artwork occupies (smaller for maskable icons)
+def lerp(c1, c2, t): return tuple(int(c1[i] + (c2[i] - c1[i]) * t) for i in range(3))
+def gradient(a, b): return lerp(GRAD_A, GRAD_B, (a + b) / 2)
+
+
+def robot_at(a, b, scale):
+    """The robot centred in the tile and scaled (1.0 = its original size in the tile)."""
+    return robot_px((a - .5) / scale + .4725, (b - .5) / scale + .4925)
+
+
+def icon(path, size, scale):
+    """Full icon: robot on the gradient, gradient bleeding to every edge."""
     rows = []
     for j in range(size):
         row = bytearray()
         for i in range(size):
-            a = (i / size - .5) / safe + .5; b = (j / size - .5) / safe + .5
-            row += bytes(robot_px(a, b) or BG)
+            a, b = i / size, j / size
+            row += bytes(robot_at(a, b, scale) or gradient(a, b))
         rows.append(bytes(row))
+    write_png(path, size, size, rows)
+
+
+def adaptive_foreground(path, size, scale):
+    """Android adaptive-icon foreground: just the robot on a transparent layer. The phone shows only the
+    central ~66% (masked to a circle/squircle), so the robot must sit well inside that."""
+    rows = []
+    for j in range(size):
+        row = bytearray()
+        for i in range(size):
+            c = robot_at(i / size, j / size, scale)
+            row += bytes(c + (255,)) if c else bytes((0, 0, 0, 0))
+        rows.append(bytes(row))
+    write_png(path, size, size, rows, alpha=True)
+
+
+def adaptive_background(path, size):
+    rows = [b''.join(bytes(gradient(i / size, j / size)) for i in range(size)) for j in range(size)]
     write_png(path, size, size, rows)
 
 
@@ -103,10 +131,12 @@ def splash(path, size=2732, scale=4):
 
 
 if __name__ == '__main__':
-    icon('www/icon-192.png', 192, 1.0)
-    icon('assets/icon-only.png', 1024, .8)
-    icon('www/icon-512.png', 512, 1.0)
-    icon('www/icon-maskable-512.png', 512, .72)
+    icon('www/icon-192.png', 192, 1.25)
+    icon('www/icon-512.png', 512, 1.25)
+    icon('www/icon-maskable-512.png', 512, .95)      # smaller robot: PWA maskable icons keep art inside a central circle
+    icon('assets/icon-only.png', 1024, 1.25)
+    adaptive_foreground('assets/icon-foreground.png', 1024, .855)   # ~56% of the layer, inside Android's 66% safe zone
+    adaptive_background('assets/icon-background.png', 1024)
     splash('assets/splash.png')
     splash('assets/splash-dark.png')
     print('images written')

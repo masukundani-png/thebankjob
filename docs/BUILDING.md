@@ -74,9 +74,13 @@ python make_icons.py
 ```
 
 This writes `www/icon-192.png`, `www/icon-512.png`, `www/icon-maskable-512.png`
-(the PWA/manifest icons), `assets/icon-only.png` (the source image the CI
-build feeds to `@capacitor/assets` to generate the native Android launcher
-icon set), and `assets/splash.png` + `assets/splash-dark.png` (the source
+(the PWA/manifest icons), `assets/icon-only.png` (legacy/round Android
+launcher icons), `assets/icon-foreground.png` + `assets/icon-background.png`
+(the two layers of Android's *adaptive* home-screen icon — the phone masks
+them to a circle or squircle and shows only the central ~66%, so the robot
+in the foreground layer is deliberately smaller than in the other icons),
+all fed to `@capacitor/assets` by the CI build, and `assets/splash.png` +
+`assets/splash-dark.png` (the source
 for the Android launch splash screen — the robot and a "BANK JOB" wordmark
 on the app's dark background). Regenerating rewrites all of them, even for a
 small change. Keep the splash artwork inside the central ~1200px of its

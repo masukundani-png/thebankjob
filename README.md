@@ -63,7 +63,8 @@ has the full history of what's been built and why.
 │   ├── manifest.webmanifest         #   PWA metadata
 │   └── icon-*.png                   #   app icons (generated -- see make_icons.py)
 ├── assets/
-│   ├── icon-only.png              # source image @capacitor/assets uses to build the native launcher icon
+│   ├── icon-only.png              # legacy/round Android launcher icon source
+│   ├── icon-foreground.png, icon-background.png   # Android adaptive icon layers (masked by the phone)
 │   └── splash.png, splash-dark.png   # source images for the Android launch splash screen
 ├── make_icons.py                  # regenerates every icon/splash image above (pure stdlib, no deps)
 ├── capacitor.config.json          # app id, app name, web dir
