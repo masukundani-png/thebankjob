@@ -53,13 +53,28 @@ sed -n '/<script>/,/<\/script>/p' www/index.html | sed '1d;$d' > /tmp/check.js
 node --check /tmp/check.js
 ```
 
-For anything touching game logic (scoring, level generation, state
-transitions), prefer writing a small headless Node test over eyeballing it —
-see [ARCHITECTURE.md § Testing approach](ARCHITECTURE.md#testing-approach)
-for the pattern used throughout this project's history (stub out `document`/
-`window`/`localStorage`, `eval()` the extracted script, call the internal
-functions directly). This project has no formal test suite or CI test step —
-every change so far has been verified this way by hand before pushing.
+Then run the full test suite (about 30 seconds, needs only Node, nothing to
+install):
+
+```bash
+node tests/full.test.js
+```
+
+It runs the real `www/index.html` in a sandbox and checks ~315 things: the
+fixed and generated level layouts, movement/jumping/ladders, scoring and
+combos, hazards, the boss fight, the level-clear rewards and crypto facts,
+lives and the revive ad, the daily challenge, the garage and bot name,
+mute/pause, touch tap zones, on-screen text and layout collisions, a
+random-input stress run, PNG integrity of every icon and splash image, the
+manifest / service worker / workflows, and that every link in the docs
+resolves. See [ARCHITECTURE.md § Testing approach](ARCHITECTURE.md#testing-approach)
+for how it works and how to extend it. **Run it before every push.** It
+exits non-zero if anything fails. (There's still no CI test step — it's run
+by hand; see "Known limitations" below.)
+
+It cannot see everything, so for anything visual also look at the game in a
+real browser: text overlaps and off-screen layout were only found that way
+(see the changelog).
 
 ## 4. Regenerate icons / splash screen (only if you changed them)
 

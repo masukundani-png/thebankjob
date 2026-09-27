@@ -118,23 +118,41 @@ stubbed generically.
 
 ## Testing approach
 
-There's no formal test suite. The pattern used throughout this project's
-history, for anything beyond a pure CSS/copy change:
+The suite is one file, [`tests/full.test.js`](../tests/full.test.js), run with
+`node tests/full.test.js` (no dependencies, ~30s, exits 1 on any failure).
 
-1. Extract the script: `sed -n '/<script>/,/<\/script>/p' www/index.html |
-   sed '1d;$d' > check.js`
-2. `node --check check.js` — catches syntax errors immediately.
-3. For logic changes, write a small throwaway Node script that stubs the
-   browser globals the game touches (`document.getElementById`,
-   `window.addEventListener`, `localStorage`, `navigator.vibrate`,
-   `AudioContext`, `requestAnimationFrame`), `eval()`s the extracted script
-   with a trailing `global.G = { ...expose the internals you need... }`, and
-   asserts on `G`'s behavior after calling `G.update()` / `G.onPress()` /
-   etc. directly. This has caught real bugs before shipping (see
-   `CHANGELOG.md` — the GARAGE tap-zone bug and the `onPress` ordering bug
-   were both found exactly this way, before either reached a real device).
-4. For visual changes, serve locally (`python -m http.server`) and check in
-   an actual browser — canvas rendering can't be verified from Node.
+**How it works.** It reads `www/index.html`, extracts the `<script>`, and runs
+it inside a Node `vm` sandbox with stubbed browser objects (a recording
+canvas context, `localStorage`, a fake `AudioContext`, captured
+`addEventListener` handlers). A block appended to the script exposes the
+game's internals (`state`, `P`, `update()`, `onPress()`, …) as `G`, so tests
+can drive the real game code directly: call `G.update()` for a frame, press
+keys, tap canvas coordinates, and read state back. Every `boot()` is a fresh,
+isolated game. The recording canvas also captures *where and how big* each
+string is drawn, which is how it catches text collisions.
 
-Delete these throwaway test scripts before committing; they're a
-verification step, not part of the shipped project.
+**Sections.** Boot/title · fixed layout · procedural layouts (~600 seeds) ·
+movement/ladders/ice/pause · scoring & combo · hazards · keys & boss ·
+level-clear rewards · crypto facts · lives/revive/high scores · daily
+challenge · garage & bot name · mute · touch tap zones · on-screen text &
+layout · a 50,000-frame random-input stress run · PNG integrity of all
+images · config/manifest/service worker/workflows · docs links.
+
+**Extending it.** Add a `check(name, condition, detail)` inside the relevant
+`section(...)`. When a new bug is found, add a check that *fails on the old
+code first*, then fix it — this is how the layout checks were added. If you
+add a new top-level `let`/function to `index.html` that a test needs, add its
+name to the `LETS` / `FUNCS` / `CONSTS` lists at the top of the test file.
+
+**What it can't see.** Real canvas rendering, real fonts, the service worker
+actually registering, and real touch input. Those need a browser (or a phone):
+serve the site (`python -m http.server`) and look. Two layout bugs — the bot
+name overlapping the title logo, and the top HUD clipped in short windows —
+were only found that way; both now have regression checks. Note: when
+reloading during local testing, hard-refresh (or add `?x=1` to the URL) —
+static servers let browsers serve a stale cached page.
+
+**Older approach** (still handy for a one-off): extract the script
+(`sed -n '/<script>/,/<\/script>/p' www/index.html | sed '1d;$d' > check.js`),
+`node --check check.js` for syntax, and a throwaway script that `eval()`s it
+with a trailing `global.G = {...}`.

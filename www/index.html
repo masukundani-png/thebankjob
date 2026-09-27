@@ -18,7 +18,9 @@
     background:radial-gradient(120% 80% at 50% 0%,#141b3a 0%,#080b18 60%,#05070f 100%);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
   body{display:flex;flex-direction:column;align-items:center;justify-content:center;
        padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
-  canvas{width:min(100vw, calc((100dvh - 150px) * 640 / 720));aspect-ratio:640/720;height:auto;display:block;background:#0b1020}
+  :root{--reserve:202px} /* height kept free below the game: 140px controls + ~52px ad banner */
+  body.noads{--reserve:150px}
+  canvas{width:min(100vw, calc((100dvh - var(--reserve)) * 640 / 720));aspect-ratio:640/720;height:auto;display:block;background:#0b1020}
   @media (min-width:700px){canvas{border-radius:22px;box-shadow:0 0 0 1px #ffffff1a,0 20px 80px #000c,0 0 90px #ff7a5a1f}}
   #pad{width:100%;max-width:640px;height:140px;padding:0 16px;display:flex;justify-content:space-between;align-items:center;touch-action:none}
   #pad .grp{display:flex;gap:12px;align-items:center}
@@ -44,7 +46,7 @@
     #pad .j{width:92px;height:92px}
     #adBanner{display:none}
   }
-  @media (max-height:640px){ #adBanner{display:none} }
+  @media (max-height:640px){ #adBanner{display:none} :root{--reserve:150px} }
 </style>
 </head>
 <body>
@@ -223,7 +225,7 @@ const SHOP = [
 ];
 const SHOP_CATS = ['robot', 'trail', 'boulder', 'coin'];
 const SHOP_LABELS = { robot: 'ROBOT SKIN', trail: 'TRAIL EFFECT', boulder: 'BOULDER SKIN', coin: 'COIN SKIN' };
-const SHOP_ROWY = { robot: 350, trail: 430, boulder: 510, coin: 590 };
+const SHOP_ROWY = { robot: 362, trail: 450, boulder: 538, coin: 626 }; // 88px apart: heading + equipped ring (r+4) + item name all fit per row
 let coinBank = +(localStorage.getItem('tbj_bank') || 0);
 let botName = (() => { try { return localStorage.getItem('tbj_name') || 'UNIT-7'; } catch (e) { return 'UNIT-7'; } })();
 function renameBot() {
@@ -760,12 +762,12 @@ function drawGov() {
   glass(x + w / 2 - 38, b + 6, 76, 16, 8, 'rgba(255,80,80,.14)', 'rgba(255,120,120,.4)');
   txt('GOVERNMENT', x + w / 2, b + 18, 8.5, '#ff9a9a');
   if (boss && !boss.dead) {
-    const hpw = 70, hx = x + w / 2 - hpw / 2, hy = b - h - 54;
+    const hpw = 70, hx = x + w / 2 - hpw / 2, hy = b + 38; // below the building: above it, the HUD bar (y 6-36) covers it
     glass(hx, hy, hpw, 10, 5, 'rgba(255,80,80,.15)', 'rgba(255,120,120,.5)');
     ctx.fillStyle = '#ff5252'; rr(hx + 2, hy + 2, Math.max(0, (hpw - 4) * boss.hp / boss.maxHp), 6, 3); ctx.fill();
     txt('BOSS', x + w / 2, hy - 4, 8, '#ff9a9a');
   } else if (boss && boss.dead) {
-    txt('DEFEATED', x + w / 2, b - h - 44, 9, '#7dffb0');
+    txt('DEFEATED', x + w / 2, b + 44, 9, '#7dffb0');
   }
 }
 
@@ -979,7 +981,7 @@ function gradText(s, x, y, size, c1, c2, glowCol) {
 function drawTitle() {
   card(40, 80, 560, 646);
   drawRobotAt(W / 2, 210 + Math.sin(tick * .06) * 4, { face: 1, anim: 0, ground: false, climb: false, moving: false, inv: 0 }, 2);
-  txt(botName, W / 2, 254, 13, 'rgba(255,255,255,.65)', 'center', 700);
+  txt(botName, W / 2, 240, 13, 'rgba(255,255,255,.65)', 'center', 700);
   gradText('BANK JOB', W / 2, 290, 54, '#ffb347', '#ff5e8a', '#ff7a5a');
   txt('Stack crypto. Dodge fiat. Chain combos. Outrun the state.', W / 2, 320, 13, 'rgba(255,255,255,.62)', 'center', 500);
   const rows = [
@@ -1012,7 +1014,7 @@ function drawShop() {
   txt('WALLET  ' + coinBank, W / 2 - 42, 279, 13, '#ffd9a0', 'left', 800);
   glass(W / 2 - 90, 290, 180, 22, 11, 'rgba(255,255,255,.06)');
   txt(botName + '  \u270E  ' + (isTouch ? 'TAP TO RENAME' : 'N to rename'), W / 2, 305, 9.5, '#fff', 'center', 700);
-  for (const cat of SHOP_CATS) txt(SHOP_LABELS[cat], W / 2, SHOP_ROWY[cat] - 24, 10.5, 'rgba(255,255,255,.55)', 'center', 700);
+  for (const cat of SHOP_CATS) txt(SHOP_LABELS[cat], W / 2, SHOP_ROWY[cat] - 36, 10.5, 'rgba(255,255,255,.55)', 'center', 700);
   for (const { it, x, y, r } of shopLayout()) {
     const own = isOwned(it), eq = equipped[it.cat] === it.id;
     ctx.save(); if (!own) ctx.globalAlpha = .55;
@@ -1022,7 +1024,7 @@ function drawShop() {
     else if (!own) { ctx.fillStyle = 'rgba(4,7,18,.7)'; disc(x, y, r); ctx.fill(); }
     txt(eq ? '\u2713 ' + it.name : own ? it.name : it.price + '', x, y + r + 14, 9, eq ? '#7dffb0' : own ? 'rgba(255,255,255,.6)' : '#ffd34d', 'center', 700);
   }
-  txt(isTouch ? 'Tap a skin to equip or unlock · tap elsewhere to go back' : 'Click a skin to equip or unlock · ENTER / ESC to go back', W / 2, 668, 10.5, 'rgba(255,255,255,.45)');
+  txt(isTouch ? 'Tap a skin to equip or unlock · tap elsewhere to go back' : 'Click a skin to equip or unlock · ENTER / ESC to go back', W / 2, 686, 10.5, 'rgba(255,255,255,.45)');
 }
 function shopSwatch(it, x, y, r) {
   if (it.cat === 'robot') {
@@ -1184,7 +1186,7 @@ function frame(t) {
   while (acc >= 1000 / 60) { update(); acc -= 1000 / 60; }
   draw(); requestAnimationFrame(frame);
 }
-if (Ads.adFree) { const b = document.getElementById('adBanner'); if (b) b.classList.add('hidden'); }
+if (Ads.adFree) { const b = document.getElementById('adBanner'); if (b) b.classList.add('hidden'); document.body.classList.add('noads'); }
 requestAnimationFrame(frame);
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
 </script>

@@ -3,6 +3,26 @@
 All notable changes, newest first. Commit hashes refer to
 https://github.com/masukundani-png/thebankjob.
 
+## Unreleased (found while testing everything on 2026-09-25; fixed in the working copy, not yet pushed)
+
+- **Full test suite** added: `tests/full.test.js` (~315 checks; see
+  `docs/BUILDING.md`). Its checks were verified by breaking the game on
+  purpose in 8 ways and confirming each was caught.
+- **Fix: bot name overlapped the BANK JOB logo** on the title screen (the
+  name was drawn at y=254, on top of the logo whose letters start at y≈251).
+  Moved to y=240.
+- **Fix: top score bar / pause button clipped on short windows.** The game's
+  height only reserved room for the on-screen controls, not the ad banner
+  added beneath it, so on a typical laptop browser window (~650px tall) the
+  top ~20px of the game — most of the HUD — was cut off. The reserve is now a
+  CSS variable (`--reserve`: 202px with the banner, 150px without).
+  Phones were unaffected (width, not height, is their limit).
+- **Fix: garage headings crowded the equipped-item ring and the item names
+  above.** Rows are now 88px apart (were 80) with the headings raised.
+- **Fix: boss health bar was hidden behind the top HUD bar** (drawn at
+  y≈21–31, under the HUD's y 6–36). Moved below the government building.
+- Service worker cache bumped to `tbj-v15` for the above.
+
 ## 2026-09-23
 
 - **(pending)** Publish the game on the web via GitHub Pages
